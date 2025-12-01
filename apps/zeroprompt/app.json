@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "ZeroPrompt",
+    "slug": "zeroprompt",
+    "version": "0.1.0",
+    "scheme": "zeroprompt",
+    "platforms": ["ios", "android", "web"],
+    "orientation": "portrait",
+    "splash": {
+      "backgroundColor": "#0c0c0f"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "replace-with-your-project-id"
+      }
+    }
+  }
+}

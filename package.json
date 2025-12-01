@@ -1,0 +1,23 @@
+{
+  "name": "zeroprompt-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace apps/api run dev",
+    "dev:app": "npm --workspace apps/zeroprompt run start",
+    "test:api": "npm --workspace apps/api test",
+    "test:contracts": "npm --workspace apps/contracts test",
+    "lint": "npm --workspace apps/api run lint && npm --workspace apps/zeroprompt run lint",
+    "format": "npm --workspace apps/api run format && npm --workspace apps/zeroprompt run format"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0"
+  }
+}

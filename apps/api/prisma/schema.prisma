@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Prompt {
+  id        Int      @id @default(autoincrement())
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Model {
+  id                 Int      @id @default(autoincrement())
+  openrouterId       String   @unique @map("openrouter_id")
+  name               String
+  description        String?  @db.Text
+  iconUrl            String?  @map("icon_url") @db.LongText // Base64 support
+  contextLength      Int?     @map("context_length")
+  pricingPrompt      Decimal? @map("pricing_prompt") @db.Decimal(18, 8)
+  pricingCompletion  Decimal? @map("pricing_completion") @db.Decimal(18, 8)
+  publicPricingPrompt     Decimal? @map("public_pricing_prompt") @db.Decimal(18, 8)
+  publicPricingCompletion Decimal? @map("public_pricing_completion") @db.Decimal(18, 8)
+  architecture       Json?    @map("architecture")
+  tags               Json?
+  displayPriority    Int      @default(0) @map("display_priority")
+  isActive           Boolean  @default(true) @map("is_active")
+  lastSeenAt         DateTime @default(now()) @map("last_seen_at")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  usersDefaultModel  User[]
+}
+
+model User {
+  id               Int       @id @default(autoincrement())
+  walletAddress    String?   @unique @map("wallet_address")
+  guestId          String?   @unique @map("guest_id")
+  displayName      String?
+  nonce            String?
+  isGuest          Boolean   @default(true) @map("is_guest")
+  sessionToken     String?   @map("session_token")
+  sessionExpiresAt DateTime? @map("session_expires_at")
+  defaultModelId   Int?      @map("default_model_id")
+  defaultModel     Model?    @relation(fields: [defaultModelId], references: [id])
+  
+  // Freemium / Stats
+  messageCount     Int       @default(0) @map("message_count")
+  isPremium        Boolean   @default(false) @map("is_premium")
+
+  conversations    Conversation[]
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  title     String?
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id])
+  messages  Message[]
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String       // "user" | "assistant"
+  content        String       @db.Text
+  modelUsed      String?      // To track which model generated this
+  
+  attachmentUrl  String?      @map("attachment_url")
+  attachmentType String?      @map("attachment_type") // "image", "file", etc.
+  
+  metadata       Json?        // Stores { reasoning, sources, usage, etc. }
+
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}

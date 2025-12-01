@@ -1,0 +1,2 @@
+# This directory stores deployment info (JSON files are gitignored)
+# After deploying, update .env with the contract addresses

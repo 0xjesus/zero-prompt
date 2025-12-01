@@ -1,0 +1,77 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run db:generate -w apps/api
+
+      - name: Build API
+        run: npm run build -w apps/api
+
+      - name: Compile Smart Contracts
+        run: npm run compile -w apps/contracts
+
+      # Expo Web Build (Optional check to ensure it builds)
+      # - name: Build Web App
+      #   run: npm run start:web -w apps/zeroprompt -- --dry-run
+
+  deploy:
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ secrets.SERVER_PORT || '22' }}
+          script: |
+            # ----------------------------------------------------------------------
+            # DEPLOYMENT SCRIPT
+            # Adjust this path to where your repo is cloned on the server
+            # ----------------------------------------------------------------------
+            PROJECT_PATH="~/zero-prompt"
+            
+            echo "Deploying to $PROJECT_PATH..."
+            
+            # 1. Navigate to project directory
+            cd $PROJECT_PATH || exit 1
+            
+            # 2. Pull latest changes
+            git pull origin main
+            
+            # 3. Install dependencies
+            npm ci
+            
+            # 4. Rebuild API and Contracts
+            npm run db:generate -w apps/api
+            npm run build -w apps/api
+            npm run compile -w apps/contracts
+            
+            # 5. Restart Application (Example using PM2)
+            # Uncomment and adjust the following line matching your PM2 process name
+            # pm2 restart zeroprompt-api || pm2 start apps/api/dist/index.js --name zeroprompt-api
+            
+            echo "Deployment complete!"

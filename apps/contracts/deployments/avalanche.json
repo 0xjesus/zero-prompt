@@ -1,0 +1,11 @@
+{
+  "network": "avalanche",
+  "networkName": "Avalanche C-Chain",
+  "chainId": 43114,
+  "contractAddress": "0x58b1f513cA5DEAc44d30530cFB9312db3D2e88c9",
+  "priceFeedAddress": "0x0A77230d17318075983913bC2145DB16C7366156",
+  "deployer": "0xA43e4Df85CBEF2D86669c90b581E5FA7e9B06Baa",
+  "deploymentTime": "2025-11-25T19:55:50.663Z",
+  "transactionHash": "0x64bc4b92644794da2a5da7702227bd6c77c7cfef33fccbb2876a664025b0d4d6",
+  "blockNumber": 72579057
+}
