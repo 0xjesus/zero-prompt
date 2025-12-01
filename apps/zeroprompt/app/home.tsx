@@ -630,6 +630,163 @@ export default function HomePage() {
                             </Text>
                         </View>
                     ))}
+                    {/* x402 Protocol Feature Card */}
+                    <TouchableOpacity
+                        onPress={() => router.push('/protocol')}
+                        style={{
+                            width: isDesktop ? 'calc(33.33% - 16px)' : isTablet ? 'calc(50% - 12px)' : '100%',
+                            backgroundColor: 'rgba(139, 92, 246, 0.1)', // Cyber Purple tint
+                            borderRadius: 20,
+                            padding: 32,
+                            borderWidth: 1,
+                            borderColor: COLORS.cyberPurple
+                        }}
+                    >
+                        <Layers size={32} color={COLORS.cyberPurple} style={{ marginBottom: 20 }} />
+                        <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>
+                            Agent API (x402)
+                        </Text>
+                        <Text style={{ color: COLORS.textSecondary, fontSize: 16 }}>
+                            Frictionless AI-to-AI payments protocol. Try the interactive demo.
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {/* ============================================================
+                x402 PROTOCOL SECTION - Agent Economy
+            ============================================================ */}
+            <View style={{
+                paddingVertical: 100,
+                paddingHorizontal: containerPadding,
+            }}>
+                <View style={{
+                    maxWidth: 1200,
+                    alignSelf: 'center',
+                    alignItems: 'center'
+                }}>
+                    <Text style={{
+                        color: COLORS.cyberPurple,
+                        fontSize: 14,
+                        fontWeight: '700',
+                        letterSpacing: 2,
+                        textAlign: 'center',
+                        marginBottom: 16
+                    }}>x402 PROTOCOL</Text>
+                    <Text style={{
+                        color: '#fff',
+                        fontSize: isDesktop ? 44 : 32,
+                        fontWeight: '900',
+                        textAlign: 'center',
+                        marginBottom: 24,
+                        maxWidth: 800
+                    }}>
+                        The Internet's Native Payment Layer for AI Agents
+                    </Text>
+                    <Text style={{
+                        color: COLORS.textSecondary,
+                        fontSize: 18,
+                        textAlign: 'center',
+                        lineHeight: 30,
+                        marginBottom: 48,
+                        maxWidth: 700
+                    }}>
+                        HTTP 402 "Payment Required" was defined in 1999 but never implemented.
+                        Until now. ZeroPrompt brings machine-to-machine payments to life,
+                        enabling AI agents to autonomously pay for services without human intervention.
+                    </Text>
+
+                    <View style={{
+                        flexDirection: isDesktop ? 'row' : 'column',
+                        gap: 24,
+                        width: '100%',
+                        marginBottom: 48
+                    }}>
+                        {[
+                            {
+                                title: 'Instant Micropayments',
+                                desc: 'Agents pay per-request with AVAX. No API keys, no monthly bills, no rate limits.',
+                                icon: '⚡'
+                            },
+                            {
+                                title: 'Autonomous Transactions',
+                                desc: 'AI agents can discover, negotiate, and pay for services programmatically.',
+                                icon: '🤖'
+                            },
+                            {
+                                title: 'Real-time Pricing',
+                                desc: 'Dynamic quotes based on live AVAX prices and OpenRouter model costs.',
+                                icon: '📊'
+                            }
+                        ].map((item, idx) => (
+                            <View key={idx} style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(139, 92, 246, 0.08)',
+                                borderRadius: 20,
+                                padding: 28,
+                                borderWidth: 1,
+                                borderColor: 'rgba(139, 92, 246, 0.2)'
+                            }}>
+                                <Text style={{ fontSize: 32, marginBottom: 16 }}>{item.icon}</Text>
+                                <Text style={{
+                                    color: '#fff',
+                                    fontSize: 20,
+                                    fontWeight: '700',
+                                    marginBottom: 10
+                                }}>{item.title}</Text>
+                                <Text style={{
+                                    color: COLORS.textSecondary,
+                                    fontSize: 15,
+                                    lineHeight: 24
+                                }}>{item.desc}</Text>
+                            </View>
+                        ))}
+                    </View>
+
+                    <View style={{
+                        backgroundColor: COLORS.bgCard,
+                        borderRadius: 16,
+                        padding: 24,
+                        borderWidth: 1,
+                        borderColor: 'rgba(139, 92, 246, 0.3)',
+                        marginBottom: 32,
+                        maxWidth: 700,
+                        width: '100%'
+                    }}>
+                        <Text style={{
+                            color: COLORS.cyberPurple,
+                            fontSize: 13,
+                            fontFamily: Platform.OS === 'web' ? 'monospace' : 'Courier',
+                            marginBottom: 8
+                        }}>// How it works</Text>
+                        <Text style={{
+                            color: COLORS.textSecondary,
+                            fontSize: 14,
+                            fontFamily: Platform.OS === 'web' ? 'monospace' : 'Courier',
+                            lineHeight: 22
+                        }}>
+                            {`1. Agent sends request → Server returns 402 + payment details\n2. Agent signs AVAX transaction → Sends payment proof\n3. Server verifies on-chain → Returns AI response`}
+                        </Text>
+                    </View>
+
+                    <TouchableOpacity
+                        onPress={() => router.push('/protocol')}
+                        style={{
+                            backgroundColor: COLORS.cyberPurple,
+                            paddingHorizontal: 36,
+                            paddingVertical: 18,
+                            borderRadius: 14,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 12
+                        }}
+                    >
+                        <Layers size={22} color="#fff" />
+                        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 17 }}>
+                            Try the x402 Demo
+                        </Text>
+                        <ArrowRight size={20} color="#fff" />
+                    </TouchableOpacity>
                 </View>
             </View>
 

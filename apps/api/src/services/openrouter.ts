@@ -11,6 +11,34 @@ const apiKey = process.env.OPENROUTER_API_KEY;
 const referer = process.env.APP_URL || "http://localhost";
 const title = "ZeroPrompt";
 
+export type OpenRouterModel = {
+  id: string;
+  name: string;
+  pricing: {
+    prompt: string;
+    completion: string;
+    image?: string;  // For image generation models
+  };
+  architecture?: {
+    modality?: string;  // e.g., "text->text", "text->image"
+  };
+};
+
+export async function getModels(): Promise<OpenRouterModel[]> {
+  const response = await fetch(`${baseUrl}/models`, {
+    headers: {
+      "Content-Type": "application/json",
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch models: ${response.status}`);
+  }
+
+  const data = await response.json() as { data: OpenRouterModel[] };
+  return data.data || [];
+}
+
 export async function chatCompletion(input: ChatCompletionInput): Promise<string> {
   if (!apiKey) {
     throw new Error("Missing OPENROUTER_API_KEY");

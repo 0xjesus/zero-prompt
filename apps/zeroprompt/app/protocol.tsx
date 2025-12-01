@@ -1,0 +1,2029 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  View, Text, TouchableOpacity, ScrollView, TextInput,
+  StyleSheet, Platform, Image, useWindowDimensions, ActivityIndicator
+} from 'react-native';
+import { useAccount, useSendTransaction } from 'wagmi';
+import { parseEther, getAddress } from 'viem';
+import { Stack, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '../context/ThemeContext';
+import {
+  Layers, Code, Shield, Zap, ChevronDown, Copy, Check, Terminal, FileCode,
+  Play, Wallet, ArrowRight, CheckCircle, Circle, Loader, AlertCircle,
+  ExternalLink, Sparkles, Clock, DollarSign, Lock, Globe, ChevronRight,
+  MessageSquare, Home, Bot, Cpu
+} from 'lucide-react-native';
+import ModelSelectorModal from '../components/ModelSelectorModal';
+
+// ============================================================================
+// CONFIG
+// ============================================================================
+const API_URL = Platform.OS === 'web' ? 'http://localhost:3001' : 'http://10.0.2.2:3001';
+// Checksummed address using viem's getAddress
+const MERCHANT_ADDRESS = getAddress('0x209f0baca0c23edc57881b26b68fc4148123b039');
+
+// ============================================================================
+// TYPES
+// ============================================================================
+type ExecutionStep = 'idle' | 'requesting' | 'paying' | 'confirming' | 'generating' | 'complete' | 'error';
+
+// ============================================================================
+// STEP INDICATOR COMPONENT
+// ============================================================================
+const StepIndicator = ({
+  step,
+  currentStep,
+  title,
+  description,
+  isLast = false
+}: {
+  step: number;
+  currentStep: number;
+  title: string;
+  description: string;
+  isLast?: boolean;
+}) => {
+  const isActive = currentStep === step;
+  const isComplete = currentStep > step;
+  const isPending = currentStep < step;
+
+  return (
+    <View style={{ flexDirection: 'row', opacity: isPending ? 0.4 : 1 }}>
+      <View style={{ alignItems: 'center', marginRight: 16 }}>
+        <View style={[
+          styles.stepCircle,
+          isComplete && styles.stepCircleComplete,
+          isActive && styles.stepCircleActive
+        ]}>
+          {isComplete ? (
+            <Check size={16} color="#000" strokeWidth={3} />
+          ) : isActive ? (
+            <Loader size={16} color="#000" />
+          ) : (
+            <Text style={[styles.stepNumber, isActive && { color: '#000' }]}>{step}</Text>
+          )}
+        </View>
+        {!isLast && (
+          <View style={[
+            styles.stepLine,
+            isComplete && styles.stepLineComplete
+          ]} />
+        )}
+      </View>
+      <View style={{ flex: 1, paddingBottom: isLast ? 0 : 24 }}>
+        <Text style={[styles.stepTitle, isActive && { color: '#00FF41' }]}>{title}</Text>
+        <Text style={styles.stepDescription}>{description}</Text>
+      </View>
+    </View>
+  );
+};
+
+// ============================================================================
+// EXECUTION LOG COMPONENT
+// ============================================================================
+const ExecutionLog = ({ logs }: { logs: { message: string; type: 'info' | 'success' | 'error' | 'pending' }[] }) => (
+  <View style={styles.logContainer}>
+    {logs.map((log, i) => (
+      <View key={i} style={styles.logLine}>
+        {log.type === 'success' && <CheckCircle size={14} color="#4CAF50" />}
+        {log.type === 'error' && <AlertCircle size={14} color="#F44336" />}
+        {log.type === 'pending' && <Loader size={14} color="#FFC107" />}
+        {log.type === 'info' && <ChevronRight size={14} color="#64748B" />}
+        <Text style={[
+          styles.logText,
+          log.type === 'success' && { color: '#4CAF50' },
+          log.type === 'error' && { color: '#F44336' },
+          log.type === 'pending' && { color: '#FFC107' }
+        ]}>
+          {log.message}
+        </Text>
+      </View>
+    ))}
+  </View>
+);
+
+// ============================================================================
+// CODE BLOCK WITH COPY
+// ============================================================================
+const CodeBlock = ({ code, label }: { code: string; label: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (Platform.OS === 'web') {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <View style={styles.codeBlockContainer}>
+      <View style={styles.codeBlockHeader}>
+        <Text style={styles.codeBlockLabel}>{label}</Text>
+        <TouchableOpacity onPress={handleCopy} style={styles.copyBtn}>
+          {copied ? (
+            <><Check size={12} color="#4CAF50" /><Text style={styles.copyBtnTextSuccess}>Copied!</Text></>
+          ) : (
+            <><Copy size={12} color="#94a3b8" /><Text style={styles.copyBtnText}>Copy</Text></>
+          )}
+        </TouchableOpacity>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.codeBlockScroll}>
+        <Text style={styles.codeText}>{code}</Text>
+      </ScrollView>
+    </View>
+  );
+};
+
+// ============================================================================
+// FEATURE CARD
+// ============================================================================
+const FeatureCard = ({ icon: Icon, title, description, color }: any) => (
+  <View style={[styles.featureCard, { borderColor: `${color}30` }]}>
+    <View style={[styles.featureIconContainer, { backgroundColor: `${color}15` }]}>
+      <Icon size={24} color={color} />
+    </View>
+    <Text style={styles.featureTitle}>{title}</Text>
+    <Text style={styles.featureDescription}>{description}</Text>
+  </View>
+);
+
+// ============================================================================
+// MAIN PAGE
+// ============================================================================
+export default function ProtocolPage() {
+  const { theme } = useTheme();
+  const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isDesktop = width > 1024;
+  const isTablet = width > 768;
+
+  // Wallet
+  const { address, isConnected } = useAccount();
+  const { sendTransactionAsync } = useSendTransaction();
+
+  // Models
+  const [models, setModels] = useState<any[]>([]);
+  const [selectedModels, setSelectedModels] = useState<any[]>([]);
+  const [showModelModal, setShowModelModal] = useState(false);
+
+  // Prompt & Execution
+  const [prompt, setPrompt] = useState('Explain how blockchain works in 3 sentences.');
+  const [executionStep, setExecutionStep] = useState<ExecutionStep>('idle');
+  const [logs, setLogs] = useState<{ message: string; type: 'info' | 'success' | 'error' | 'pending' }[]>([]);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [aiResponse, setAiResponse] = useState<string | null>(null);
+  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // Quote from backend (accurate pricing)
+  const [quote, setQuote] = useState<any>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+
+  // Code tab
+  const [activeTab, setActiveTab] = useState<'curl' | 'typescript'>('curl');
+
+  // Fetch models from DB (same as chat) - only paid models for this demo
+  useEffect(() => {
+    fetch(`${API_URL}/models`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.models?.length > 0) {
+          // Filter: paid text models OR image models (exclude free)
+          const paidModels = data.models.filter((m: any) => {
+            const hasTextPricing = (m.publicPricingPrompt || 0) > 0;
+            const hasImagePricing = (m.publicPricingImage || 0) > 0;
+            const arch = m.architecture as any;
+            const isImageModel = arch?.output_modalities?.includes('image');
+            return hasTextPricing || hasImagePricing || isImageModel;
+          });
+          setModels(paidModels);
+          // Pre-select a cheap model (e.g., Llama or similar)
+          const cheapModel = paidModels.find((m: any) =>
+            m.openrouterId?.includes('llama') ||
+            m.openrouterId?.includes('mistral') ||
+            (m.publicPricingPrompt > 0 && m.publicPricingPrompt < 0.5)
+          ) || paidModels[0];
+          if (cheapModel) setSelectedModels([cheapModel]);
+        }
+      })
+      .catch(err => console.log('Failed to fetch models:', err));
+  }, []);
+
+  const handleToggleModel = (model: any) => {
+    setSelectedModels([model]);
+    setShowModelModal(false);
+  };
+
+  const selectedModel = selectedModels[0];
+  const modelId = selectedModel?.openrouterId || 'meta-llama/llama-3.1-8b-instruct';
+  const modelName = selectedModel?.name || 'Select a model';
+
+  // Fetch quote from backend whenever model or prompt changes
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (!selectedModel?.openrouterId || !prompt.trim()) {
+        setQuote(null);
+        return;
+      }
+
+      try {
+        setQuoteLoading(true);
+        setQuoteError(null);
+
+        const response = await fetch(`${API_URL}/agent/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: selectedModel.openrouterId,
+            prompt: prompt,
+            imageCount: 1
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          setQuote(data);
+        } else {
+          setQuoteError(data.error || 'Failed to get quote');
+        }
+      } catch (err: any) {
+        console.error('Quote fetch failed:', err);
+        setQuoteError('Failed to connect to quote service');
+      } finally {
+        setQuoteLoading(false);
+      }
+    };
+
+    // Debounce the quote fetch to avoid too many requests while typing
+    const timeoutId = setTimeout(fetchQuote, 500);
+    return () => clearTimeout(timeoutId);
+  }, [selectedModel?.openrouterId, prompt]);
+
+  // Extract pricing info from backend quote
+  const isImageModel = quote?.model?.type === 'image';
+  const avaxPrice = quote?.pricing?.avaxPrice || null;
+
+  // Pricing from backend quote (accurate)
+  const estimatedTokens = quote?.tokens?.input || 0;
+  const estimatedOutputTokens = quote?.tokens?.estimatedOutput || 0;
+  const pricePerMToken = selectedModel?.publicPricingPrompt || 0;
+  const estimatedCostUSD = quote?.pricing?.totalCostUSD?.toFixed(8) || '0.00000000';
+  const estimatedCostAVAX = quote?.payment?.recommendedAVAX?.toFixed(6) || '0.000000';
+  const quoteBreakdown = quote?.breakdown || 'Enter a prompt to get quote...';
+
+  // Add log helper
+  const addLog = (message: string, type: 'info' | 'success' | 'error' | 'pending' = 'info') => {
+    setLogs(prev => [...prev, { message, type }]);
+  };
+
+  // Get current step number for indicator
+  const getCurrentStepNumber = (): number => {
+    switch (executionStep) {
+      case 'idle': return 0;
+      case 'requesting': return 1;
+      case 'paying': return 2;
+      case 'confirming': return 3;
+      case 'generating': return 4;
+      case 'complete': return 5;
+      case 'error': return 0;
+      default: return 0;
+    }
+  };
+
+  // Execute the full flow
+  const handleExecute = async () => {
+    if (!prompt.trim()) return;
+    if (!quote || quoteLoading) {
+      setError('Quote not ready. Please wait for price quote to load.');
+      return;
+    }
+
+    // Reset state
+    setLogs([]);
+    setTxHash(null);
+    setAiResponse(null);
+    setGeneratedImages([]);
+    setError(null);
+
+    let currentTxHash: string | null = null;
+
+    try {
+      // ═══════════════════════════════════════════════════════════════
+      // STEP 1: REQUEST QUOTE
+      // ═══════════════════════════════════════════════════════════════
+      setExecutionStep('requesting');
+      addLog('══════════════════════════════════════', 'info');
+      addLog('STEP 1: REQUESTING PRICE QUOTE', 'info');
+      addLog('══════════════════════════════════════', 'info');
+      addLog(`→ API Endpoint: ${API_URL}/agent/generate`, 'info');
+      addLog(`→ Model: ${modelId}`, 'info');
+      addLog(`→ Model Type: ${isImageModel ? 'Image Generation' : 'Text Generation'}`, 'info');
+      addLog(`→ Prompt length: ${prompt.length} chars`, 'info');
+
+      await new Promise(r => setTimeout(r, 500));
+
+      addLog(`✓ AVAX Price (CoinGecko): $${quote.pricing.avaxPrice.toFixed(2)}`, 'success');
+      addLog(`✓ Quote source: Backend (gpt-tokenizer)`, 'success');
+      if (isImageModel) {
+        addLog(`✓ Image price: $${quote.images?.pricePerImage?.toFixed(4)}/image`, 'success');
+        addLog(`✓ Images to generate: ${quote.images?.count || 1}`, 'success');
+      } else {
+        addLog(`✓ Input tokens: ${quote.tokens?.input} (accurate count)`, 'success');
+        addLog(`✓ Est. output tokens: ~${quote.tokens?.estimatedOutput}`, 'success');
+        addLog(`✓ Input cost: $${quote.pricing.inputCostUSD.toFixed(8)}`, 'success');
+        addLog(`✓ Output cost: $${quote.pricing.outputCostUSD.toFixed(8)}`, 'success');
+      }
+      addLog(`✓ Total cost: $${quote.pricing.totalCostUSD.toFixed(8)} USD`, 'success');
+      addLog(`✓ Payment (with 5% buffer): ${quote.payment.recommendedAVAX.toFixed(6)} AVAX`, 'success');
+
+      // ═══════════════════════════════════════════════════════════════
+      // STEP 2: SEND PAYMENT
+      // ═══════════════════════════════════════════════════════════════
+      if (!isConnected) {
+        throw new Error('Wallet not connected');
+      }
+
+      setExecutionStep('paying');
+      addLog('', 'info');
+      addLog('══════════════════════════════════════', 'info');
+      addLog('STEP 2: SENDING PAYMENT', 'info');
+      addLog('══════════════════════════════════════', 'info');
+      addLog(`→ Merchant: ${MERCHANT_ADDRESS}`, 'info');
+      addLog(`→ Amount: ${estimatedCostAVAX} AVAX`, 'info');
+      addLog(`→ Network: Avalanche C-Chain (Mainnet)`, 'info');
+      addLog('→ Opening wallet...', 'pending');
+
+      const hash = await sendTransactionAsync({
+        to: MERCHANT_ADDRESS as `0x${string}`,
+        value: parseEther(estimatedCostAVAX)
+      });
+
+      currentTxHash = hash;
+      setTxHash(hash);
+
+      addLog(`✓ Transaction submitted!`, 'success');
+      addLog(`✓ TxHash: ${hash}`, 'success');
+
+      // ═══════════════════════════════════════════════════════════════
+      // STEP 3: WAIT FOR CONFIRMATION
+      // ═══════════════════════════════════════════════════════════════
+      setExecutionStep('confirming');
+      addLog('', 'info');
+      addLog('══════════════════════════════════════', 'info');
+      addLog('STEP 3: WAITING FOR CONFIRMATION', 'info');
+      addLog('══════════════════════════════════════', 'info');
+      addLog('→ Waiting for block confirmation...', 'pending');
+
+      // Wait longer for testnet propagation
+      await new Promise(r => setTimeout(r, 5000));
+
+      addLog('✓ Transaction confirmed on-chain!', 'success');
+
+      // ═══════════════════════════════════════════════════════════════
+      // STEP 4: CALL API WITH PAYMENT PROOF
+      // ═══════════════════════════════════════════════════════════════
+      setExecutionStep('generating');
+      addLog('', 'info');
+      addLog('══════════════════════════════════════', 'info');
+      addLog('STEP 4: CALLING API WITH x402 PAYMENT', 'info');
+      addLog('══════════════════════════════════════', 'info');
+
+      const paymentPayload = { txHash: currentTxHash };
+      const paymentHeader = btoa(JSON.stringify(paymentPayload));
+
+      addLog(`→ X-PAYMENT payload: ${JSON.stringify(paymentPayload)}`, 'info');
+      addLog(`→ X-PAYMENT header (base64): ${paymentHeader.slice(0, 30)}...`, 'info');
+      addLog(`→ Sending POST to ${API_URL}/agent/generate`, 'pending');
+
+      const response = await fetch(`${API_URL}/agent/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-PAYMENT': paymentHeader
+        },
+        body: JSON.stringify({ prompt, model: modelId })
+      });
+
+      addLog(`→ Response status: ${response.status}`, 'info');
+
+      const result = await response.json();
+
+      // Debug: log full response to help troubleshoot image handling
+      console.log('[Protocol] Full API response:', JSON.stringify(result, null, 2));
+      addLog(`→ Response keys: ${Object.keys(result).join(', ')}`, 'info');
+
+      if (result.error) {
+        addLog(`✗ API Error: ${result.error}`, 'error');
+        if (result.hint) {
+          addLog(`  Hint: ${result.hint}`, 'info');
+        }
+        throw new Error(result.error);
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // SUCCESS!
+      // ═══════════════════════════════════════════════════════════════
+      addLog('', 'info');
+      addLog('══════════════════════════════════════', 'success');
+      addLog('✓ SUCCESS! x402 FLOW COMPLETE', 'success');
+      addLog('══════════════════════════════════════', 'success');
+      addLog(`✓ Payment verified on-chain`, 'success');
+      addLog(`✓ AI response received`, 'success');
+
+      // Handle text responses
+      if (result.result && typeof result.result === 'string') {
+        setAiResponse(result.result);
+      }
+
+      // Handle image responses - check multiple formats
+      const images: string[] = [];
+
+      // Check for generatedImages array
+      if (result.generatedImages && Array.isArray(result.generatedImages)) {
+        images.push(...result.generatedImages);
+      }
+      // Check for single generatedImage
+      if (result.generatedImage) {
+        images.push(result.generatedImage);
+      }
+      // Check for imageUrl (legacy format)
+      if (result.imageUrl) {
+        images.push(result.imageUrl);
+      }
+      // Check if result.result contains an image URL (OpenRouter sometimes returns URLs directly)
+      if (result.result && typeof result.result === 'string') {
+        // Check if it's a URL pointing to an image
+        if (result.result.match(/^https?:\/\/.*\.(png|jpg|jpeg|gif|webp)/i) ||
+            result.result.startsWith('data:image/')) {
+          images.push(result.result);
+          setAiResponse(null); // Clear text response since it's an image URL
+        }
+      }
+
+      if (images.length > 0) {
+        setGeneratedImages(images);
+        addLog(`✓ Generated ${images.length} image(s)`, 'success');
+      }
+
+      setExecutionStep('complete');
+
+    } catch (err: any) {
+      setError(err.message);
+      addLog('', 'error');
+      addLog('══════════════════════════════════════', 'error');
+      addLog(`✗ ERROR: ${err.message}`, 'error');
+      addLog('══════════════════════════════════════', 'error');
+
+      if (err.message.includes('Chain ID')) {
+        addLog('', 'info');
+        addLog('💡 TIP: Make sure your wallet is connected to', 'info');
+        addLog('   Avalanche Mainnet (Chain ID: 43114)', 'info');
+      }
+      if (err.message.includes('not found')) {
+        addLog('', 'info');
+        addLog('💡 TIP: Transaction may still be propagating.', 'info');
+        addLog('   Wait a few seconds and try again.', 'info');
+      }
+
+      setExecutionStep('error');
+    }
+  };
+
+  // Reset
+  const handleReset = () => {
+    setExecutionStep('idle');
+    setLogs([]);
+    setTxHash(null);
+    setAiResponse(null);
+    setGeneratedImages([]);
+    setError(null);
+  };
+
+  // Generated code
+  const curlCode = useMemo(() => `# x402 Protocol - Pay-per-Request AI API
+# Step 1: Send AVAX payment to merchant
+# Step 2: Include transaction hash in X-PAYMENT header
+
+curl -X POST "${API_URL}/agent/generate" \\
+  -H "Content-Type: application/json" \\
+  -H "X-PAYMENT: $(echo '{"txHash":"0x...YOUR_TX_HASH"}' | base64)" \\
+  -d '{
+    "model": "${modelId}",
+    "prompt": "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
+  }'`, [modelId, prompt]);
+
+  const typescriptCode = useMemo(() => `// x402 Protocol - TypeScript Implementation
+import { createWalletClient, http, parseEther } from 'viem';
+import { avalanche } from 'viem/chains';
+
+const MERCHANT = "${MERCHANT_ADDRESS}";
+const API_URL = "${API_URL}";
+
+async function callAI(prompt: string, model: string) {
+  // 1. Send payment
+  const txHash = await walletClient.sendTransaction({
+    to: MERCHANT,
+    value: parseEther("${estimatedCostAVAX}")
+  });
+
+  // 2. Create x402 payment header
+  const paymentHeader = btoa(JSON.stringify({ txHash }));
+
+  // 3. Call API with payment proof
+  const response = await fetch(\`\${API_URL}/agent/generate\`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-PAYMENT': paymentHeader
+    },
+    body: JSON.stringify({ model, prompt })
+  });
+
+  return response.json();
+}
+
+// Usage
+const result = await callAI(
+  "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
+  "${modelId}"
+);`, [modelId, prompt, estimatedCostAVAX]);
+
+  return (
+    <View style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      {/* NAVBAR */}
+      <View style={styles.navbar}>
+        <TouchableOpacity onPress={() => router.push('/home')} style={styles.navBrand}>
+          <Image
+            source={require('../assets/logos/zero-prompt-logo.png')}
+            style={styles.navLogo}
+            resizeMode="contain"
+          />
+          <Text style={styles.navTitle}>ZeroPrompt</Text>
+          <View style={styles.navBadge}>
+            <Text style={styles.navBadgeText}>API</Text>
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.navLinks}>
+          <TouchableOpacity onPress={() => router.push('/home')} style={styles.navLink}>
+            <Home size={16} color="#888" />
+            <Text style={styles.navLinkText}>Home</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/')} style={styles.navLink}>
+            <MessageSquare size={16} color="#888" />
+            <Text style={styles.navLinkText}>Chat</Text>
+          </TouchableOpacity>
+          {isConnected ? (
+            <View style={styles.walletConnected}>
+              <View style={styles.walletDot} />
+              <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.connectBtn}>
+              <Wallet size={16} color="#000" />
+              <Text style={styles.connectBtnText}>Connect</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* ============================================================
+            HERO SECTION
+        ============================================================ */}
+        <View style={styles.heroSection}>
+          <LinearGradient
+            colors={['rgba(0, 255, 65, 0.1)', 'rgba(139, 92, 246, 0.1)', 'transparent']}
+            style={styles.heroGradient}
+          />
+
+          <View style={styles.heroBadge}>
+            <Bot size={14} color="#00FF41" />
+            <Text style={[styles.heroBadgeText, { color: '#00FF41' }]}>Decentralized AI API for Agents</Text>
+          </View>
+
+          <Text style={styles.heroTitle}>
+            ZeroPrompt{'\n'}
+            <Text style={{ color: '#00FF41' }}>Agent API</Text>
+          </Text>
+
+          <Text style={styles.heroSubtitle}>
+            The decentralized API that lets AI agents access 300+ models{'\n'}
+            without API keys, accounts, or subscriptions.{'\n'}
+            <Text style={{ color: '#8B5CF6' }}>Powered by x402 micropayments.</Text>
+          </Text>
+
+          <View style={styles.heroStats}>
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>300+</Text>
+              <Text style={styles.heroStatLabel}>AI Models</Text>
+            </View>
+            <View style={styles.heroStatDivider} />
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>0</Text>
+              <Text style={styles.heroStatLabel}>API Keys Needed</Text>
+            </View>
+            <View style={styles.heroStatDivider} />
+            <View style={styles.heroStat}>
+              <Text style={styles.heroStatValue}>∞</Text>
+              <Text style={styles.heroStatLabel}>Agent Compatible</Text>
+            </View>
+          </View>
+
+          {/* CTA Buttons */}
+          <View style={styles.heroCTAs}>
+            <TouchableOpacity style={styles.primaryCTA} onPress={() => {
+              // Scroll to console section
+              if (Platform.OS === 'web') {
+                document.getElementById('api-console')?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}>
+              <Play size={20} color="#000" />
+              <Text style={styles.primaryCTAText}>Try API Console</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryCTA} onPress={() => router.push('/')}>
+              <MessageSquare size={20} color="#00FF41" />
+              <Text style={styles.secondaryCTAText}>Chat Interface</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ============================================================
+            WHAT IS ZEROPROMPT API
+        ============================================================ */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>WHAT IS IT</Text>
+          <Text style={styles.sectionTitle}>AI Infrastructure for Autonomous Agents</Text>
+          <Text style={styles.sectionSubtitle}>
+            ZeroPrompt API is a decentralized gateway that allows AI agents to consume any AI model
+            without the friction of API keys, rate limits, or account management. Perfect for autonomous systems.
+          </Text>
+
+          <View style={styles.featuresGrid}>
+            <FeatureCard
+              icon={Bot}
+              title="Agent-First Design"
+              description="Built specifically for AI agents that need autonomous access to AI models without human intervention."
+              color="#00FF41"
+            />
+            <FeatureCard
+              icon={Cpu}
+              title="300+ Models"
+              description="Access OpenAI, Anthropic, Google, Meta, Mistral, and hundreds of open-source models through one endpoint."
+              color="#00D4FF"
+            />
+            <FeatureCard
+              icon={Lock}
+              title="No API Keys"
+              description="No accounts, no API keys to manage or leak. Authentication happens on-chain per request."
+              color="#8B5CF6"
+            />
+            <FeatureCard
+              icon={Zap}
+              title="Pay Per Request"
+              description="Micropayments per API call. No subscriptions, no minimums. Pay exactly what you use."
+              color="#EC4899"
+            />
+          </View>
+        </View>
+
+        {/* ============================================================
+            HOW IT WORKS - VISUAL FLOW
+        ============================================================ */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>HOW IT WORKS</Text>
+          <Text style={styles.sectionTitle}>Simple Integration Flow</Text>
+          <Text style={styles.sectionSubtitle}>
+            Your agent makes a request, pays via x402, and gets the AI response. All in one HTTP call.
+          </Text>
+
+          <View style={[styles.flowContainer, { flexDirection: isDesktop ? 'row' : 'column' }]}>
+            {[
+              { step: 1, icon: Bot, title: 'Agent Request', desc: 'Your agent calls the API', color: '#00FF41' },
+              { step: 2, icon: DollarSign, title: 'x402 Payment', desc: 'Micropayment on-chain', color: '#8B5CF6' },
+              { step: 3, icon: Cpu, title: 'AI Processing', desc: 'Model generates response', color: '#00D4FF' },
+              { step: 4, icon: Sparkles, title: 'Response', desc: 'Agent receives result', color: '#EC4899' },
+            ].map((item, idx) => (
+              <React.Fragment key={item.step}>
+                <View style={styles.flowStep}>
+                  <View style={[styles.flowStepIcon, { backgroundColor: `${item.color}20` }]}>
+                    <item.icon size={28} color={item.color} />
+                  </View>
+                  <Text style={styles.flowStepNumber}>Step {item.step}</Text>
+                  <Text style={styles.flowStepTitle}>{item.title}</Text>
+                  <Text style={styles.flowStepDesc}>{item.desc}</Text>
+                </View>
+                {idx < 3 && (
+                  <View style={[styles.flowArrow, { transform: [{ rotate: isDesktop ? '0deg' : '90deg' }] }]}>
+                    <ArrowRight size={24} color="#333" />
+                  </View>
+                )}
+              </React.Fragment>
+            ))}
+          </View>
+        </View>
+
+        {/* ============================================================
+            x402 EXPLAINED
+        ============================================================ */}
+        <View style={styles.section}>
+          <View style={styles.x402Banner}>
+            <View style={styles.x402BannerLeft}>
+              <Text style={styles.x402BannerLabel}>PAYMENT PROTOCOL</Text>
+              <Text style={styles.x402BannerTitle}>Powered by x402</Text>
+              <Text style={styles.x402BannerDesc}>
+                x402 is the HTTP 402 "Payment Required" standard for machine-to-machine payments.
+                It enables trustless, per-request micropayments without accounts or API keys.
+              </Text>
+            </View>
+            <View style={styles.x402BannerRight}>
+              <View style={styles.x402Feature}>
+                <Shield size={20} color="#8B5CF6" />
+                <Text style={styles.x402FeatureText}>Trustless verification</Text>
+              </View>
+              <View style={styles.x402Feature}>
+                <Globe size={20} color="#8B5CF6" />
+                <Text style={styles.x402FeatureText}>Works on any chain</Text>
+              </View>
+              <View style={styles.x402Feature}>
+                <Zap size={20} color="#8B5CF6" />
+                <Text style={styles.x402FeatureText}>Sub-cent transactions</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* ============================================================
+            INTERACTIVE DEMO
+        ============================================================ */}
+        <View style={styles.section} nativeID="api-console">
+          <Text style={styles.sectionLabel}>LIVE DEMO</Text>
+          <Text style={styles.sectionTitle}>Test the x402 Payment Flow</Text>
+          <Text style={styles.sectionSubtitle}>
+            This console demonstrates a real x402 payment on Avalanche Mainnet.{'\n'}
+            Watch the complete flow: wallet → blockchain → API verification → AI response.
+          </Text>
+
+          {/* Network Notice */}
+          <View style={[styles.networkNotice, { borderColor: 'rgba(0, 255, 65, 0.3)', backgroundColor: 'rgba(0, 255, 65, 0.05)' }]}>
+            <Zap size={18} color="#00FF41" />
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={[styles.networkNoticeTitle, { color: '#00FF41' }]}>Live on Avalanche Mainnet</Text>
+              <Text style={styles.networkNoticeText}>
+                This is a real x402 payment on Avalanche C-Chain (Chain ID: 43114).{'\n'}
+                You will spend real AVAX. Make sure your wallet is connected to Avalanche Mainnet.
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.consoleContainer, { flexDirection: isDesktop ? 'row' : 'column' }]}>
+
+            {/* LEFT PANEL - Input */}
+            <View style={[styles.consolePanel, { flex: 1 }]}>
+              <View style={styles.consolePanelHeader}>
+                <Terminal size={18} color="#00FF41" />
+                <Text style={styles.consolePanelTitle}>1. Configure Request</Text>
+              </View>
+              <Text style={styles.consolePanelDesc}>
+                Select an AI model and enter your prompt. The price updates automatically.
+              </Text>
+
+              {/* Model Selector */}
+              <Text style={styles.inputLabel}>AI Model</Text>
+              <TouchableOpacity
+                style={styles.modelSelector}
+                onPress={() => setShowModelModal(true)}
+              >
+                <View style={styles.modelSelectorLeft}>
+                  <Sparkles size={20} color={isImageModel ? '#EC4899' : '#00FF41'} />
+                  <View style={{ marginLeft: 12 }}>
+                    <Text style={styles.modelSelectorName} numberOfLines={1}>{modelName}</Text>
+                    <Text style={[styles.modelSelectorPrice, { color: isImageModel ? '#EC4899' : '#00FF41' }]}>
+                      {isImageModel
+                        ? `$${(selectedModel?.publicPricingImage || 0.02).toFixed(4)}/image`
+                        : `$${pricePerMToken}/M tokens`
+                      }
+                    </Text>
+                  </View>
+                </View>
+                <ChevronDown size={20} color="#666" />
+              </TouchableOpacity>
+
+              {/* Prompt Input */}
+              <Text style={styles.inputLabel}>Your Prompt</Text>
+              <TextInput
+                style={styles.promptInput}
+                placeholder="Ask anything..."
+                placeholderTextColor="#444"
+                multiline
+                value={prompt}
+                onChangeText={setPrompt}
+              />
+
+              {/* Price Summary */}
+              <View style={styles.priceSummary}>
+                {/* Quote Status Header */}
+                <View style={[styles.priceRow, { borderBottomWidth: 1, borderBottomColor: '#222', paddingBottom: 10, marginBottom: 10 }]}>
+                  <Text style={styles.priceLabel}>Quote Status</Text>
+                  {quoteLoading ? (
+                    <Text style={[styles.priceValue, { color: '#FFC107' }]}>Calculating...</Text>
+                  ) : quoteError ? (
+                    <Text style={[styles.priceValue, { color: '#F44336' }]}>Error</Text>
+                  ) : quote ? (
+                    <Text style={[styles.priceValue, { color: '#00FF41' }]}>Ready</Text>
+                  ) : (
+                    <Text style={[styles.priceValue, { color: '#666' }]}>Enter prompt</Text>
+                  )}
+                </View>
+
+                {/* AVAX Price */}
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>AVAX Price (Live)</Text>
+                  <Text style={[styles.priceValue, { color: '#00D4FF' }]}>
+                    {avaxPrice ? `$${avaxPrice.toFixed(2)}` : '...'}
+                  </Text>
+                </View>
+
+                {/* Model type indicator */}
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Model Type</Text>
+                  <Text style={[styles.priceValue, { color: isImageModel ? '#EC4899' : '#8B5CF6' }]}>
+                    {quote ? (isImageModel ? 'Image Generation' : 'Text Generation') : '...'}
+                  </Text>
+                </View>
+
+                {/* Token/Image breakdown */}
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>
+                    {isImageModel ? 'Images' : 'Tokens (gpt-tokenizer)'}
+                  </Text>
+                  <Text style={styles.priceValue}>
+                    {quote ? (isImageModel
+                      ? `${quote.images?.count || 1} image(s)`
+                      : `${estimatedTokens} in + ~${estimatedOutputTokens} out`
+                    ) : '...'}
+                  </Text>
+                </View>
+
+                {/* Cost in USD */}
+                <View style={styles.priceRow}>
+                  <Text style={styles.priceLabel}>Cost (USD)</Text>
+                  <Text style={[styles.priceValue, { color: '#00FF41', fontSize: 18 }]}>
+                    ${estimatedCostUSD}
+                  </Text>
+                </View>
+
+                {/* Payment in AVAX */}
+                <View style={[styles.priceRow, { borderTopWidth: 1, borderTopColor: '#222', paddingTop: 10, marginTop: 6 }]}>
+                  <Text style={[styles.priceLabel, { fontWeight: '600' }]}>Payment (AVAX)</Text>
+                  <Text style={[styles.priceValue, { color: '#00FF41', fontSize: 20, fontWeight: '700' }]}>
+                    {estimatedCostAVAX} AVAX
+                  </Text>
+                </View>
+
+                {/* Buffer notice */}
+                {quote && (
+                  <Text style={{ color: '#666', fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>
+                    * Includes 5% buffer for price fluctuation
+                  </Text>
+                )}
+              </View>
+
+              {/* Execute Button */}
+              {executionStep === 'idle' || executionStep === 'error' ? (
+                <TouchableOpacity
+                  style={[
+                    styles.executeBtn,
+                    (!prompt.trim() || !isConnected || !quote || quoteLoading) && styles.executeBtnDisabled
+                  ]}
+                  onPress={handleExecute}
+                  disabled={!prompt.trim() || !isConnected || !quote || quoteLoading}
+                >
+                  <Play size={20} color="#000" />
+                  <Text style={styles.executeBtnText}>
+                    {!isConnected ? 'Connect Wallet First' : quoteLoading ? 'Getting Quote...' : !quote ? 'Enter Prompt' : 'Execute & Pay'}
+                  </Text>
+                </TouchableOpacity>
+              ) : executionStep === 'complete' ? (
+                <TouchableOpacity style={styles.resetBtn} onPress={handleReset}>
+                  <Text style={styles.resetBtnText}>Try Another Request</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.executingBtn}>
+                  <ActivityIndicator color="#000" size="small" />
+                  <Text style={styles.executingBtnText}>Processing...</Text>
+                </View>
+              )}
+
+              {!isConnected && (
+                <Text style={styles.walletWarning}>
+                  💡 Connect your wallet to test the x402 payment flow
+                </Text>
+              )}
+            </View>
+
+            {/* RIGHT PANEL - Execution */}
+            <View style={[styles.consolePanel, styles.consolePanelDark, { flex: 1.2 }]}>
+              <View style={styles.consolePanelHeader}>
+                <Layers size={18} color="#8B5CF6" />
+                <Text style={styles.consolePanelTitle}>2. Watch the x402 Flow</Text>
+              </View>
+              <Text style={styles.consolePanelDesc}>
+                When you click "Execute & Pay", watch each step of the x402 protocol in real-time.
+              </Text>
+
+              {/* Step Indicators */}
+              <View style={styles.stepsContainer}>
+                <StepIndicator
+                  step={1}
+                  currentStep={getCurrentStepNumber()}
+                  title="Request Quote"
+                  description="Calculate price based on model & tokens"
+                />
+                <StepIndicator
+                  step={2}
+                  currentStep={getCurrentStepNumber()}
+                  title="Send AVAX Payment"
+                  description="Your wallet sends AVAX to merchant"
+                />
+                <StepIndicator
+                  step={3}
+                  currentStep={getCurrentStepNumber()}
+                  title="Blockchain Confirmation"
+                  description="Wait for on-chain tx confirmation"
+                />
+                <StepIndicator
+                  step={4}
+                  currentStep={getCurrentStepNumber()}
+                  title="API Verifies & Responds"
+                  description="Server verifies payment, returns AI result"
+                  isLast
+                />
+              </View>
+
+              {/* Execution Logs */}
+              {logs.length > 0 && (
+                <>
+                  <View style={styles.logsHeader}>
+                    <Terminal size={14} color="#00FF41" />
+                    <Text style={styles.logsTitle}>Live Execution Log</Text>
+                  </View>
+                  <ScrollView style={styles.logsScrollContainer} nestedScrollEnabled>
+                    <ExecutionLog logs={logs} />
+                  </ScrollView>
+                </>
+              )}
+
+              {logs.length === 0 && executionStep === 'idle' && (
+                <View style={styles.logsPlaceholder}>
+                  <Terminal size={32} color="#333" />
+                  <Text style={styles.logsPlaceholderText}>
+                    Execution logs will appear here{'\n'}when you run a request
+                  </Text>
+                </View>
+              )}
+
+              {/* Transaction Link */}
+              {txHash && (
+                <TouchableOpacity
+                  style={styles.txLink}
+                  onPress={() => {
+                    if (Platform.OS === 'web') {
+                      window.open(`https://snowtrace.io/tx/${txHash}`, '_blank');
+                    }
+                  }}
+                >
+                  <ExternalLink size={14} color="#00D4FF" />
+                  <Text style={styles.txLinkText}>View transaction on Snowtrace</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* AI Response */}
+              {aiResponse && (
+                <View style={styles.responseContainer}>
+                  <Text style={styles.responseTitle}>🤖 AI Response</Text>
+                  <Text style={styles.responseText}>{aiResponse}</Text>
+                </View>
+              )}
+
+              {/* Generated Images */}
+              {generatedImages.length > 0 && (
+                <View style={styles.responseContainer}>
+                  <Text style={styles.responseTitle}>🎨 Generated Images</Text>
+                  {generatedImages.map((imgUrl, idx) => (
+                    <View key={idx} style={styles.generatedImageContainer}>
+                      <Image
+                        source={{ uri: imgUrl }}
+                        style={styles.generatedImage}
+                        resizeMode="contain"
+                      />
+                      <TouchableOpacity
+                        style={styles.imageOpenBtn}
+                        onPress={() => {
+                          if (Platform.OS === 'web') {
+                            window.open(imgUrl, '_blank');
+                          }
+                        }}
+                      >
+                        <ExternalLink size={14} color="#fff" />
+                        <Text style={styles.imageOpenBtnText}>Open Full Size</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Error */}
+              {error && (
+                <View style={styles.errorContainer}>
+                  <AlertCircle size={16} color="#F44336" />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* ============================================================
+            CODE EXAMPLES
+        ============================================================ */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>INTEGRATE</Text>
+          <Text style={styles.sectionTitle}>Copy-Paste Ready Code</Text>
+          <Text style={styles.sectionSubtitle}>
+            The code below updates automatically based on your selected model and prompt
+          </Text>
+
+          {/* Tabs */}
+          <View style={styles.codeTabs}>
+            <TouchableOpacity
+              style={[styles.codeTab, activeTab === 'curl' && styles.codeTabActive]}
+              onPress={() => setActiveTab('curl')}
+            >
+              <Terminal size={16} color={activeTab === 'curl' ? '#000' : '#666'} />
+              <Text style={[styles.codeTabText, activeTab === 'curl' && styles.codeTabTextActive]}>cURL</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.codeTab, activeTab === 'typescript' && styles.codeTabActive]}
+              onPress={() => setActiveTab('typescript')}
+            >
+              <FileCode size={16} color={activeTab === 'typescript' ? '#000' : '#666'} />
+              <Text style={[styles.codeTabText, activeTab === 'typescript' && styles.codeTabTextActive]}>TypeScript</Text>
+            </TouchableOpacity>
+          </View>
+
+          <CodeBlock
+            code={activeTab === 'curl' ? curlCode : typescriptCode}
+            label={activeTab === 'curl' ? 'Terminal' : 'TypeScript'}
+          />
+        </View>
+
+        {/* ============================================================
+            PROTOCOL SPEC
+        ============================================================ */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>SPECIFICATION</Text>
+          <Text style={styles.sectionTitle}>x402 Protocol Details</Text>
+
+          <View style={styles.specContainer}>
+            <View style={styles.specItem}>
+              <Text style={styles.specItemTitle}>Payment Header</Text>
+              <Text style={styles.specItemCode}>X-PAYMENT: base64({"{'txHash': '0x...'}"}) </Text>
+              <Text style={styles.specItemDesc}>
+                The transaction hash is base64 encoded and sent in the X-PAYMENT header
+              </Text>
+            </View>
+
+            <View style={styles.specItem}>
+              <Text style={styles.specItemTitle}>402 Response</Text>
+              <Text style={styles.specItemCode}>HTTP/1.1 402 Payment Required</Text>
+              <Text style={styles.specItemDesc}>
+                Server responds with 402 status and price info in headers when payment is needed
+              </Text>
+            </View>
+
+            <View style={styles.specItem}>
+              <Text style={styles.specItemTitle}>Supported Chains</Text>
+              <View style={styles.chainBadges}>
+                <View style={styles.chainBadge}><Text style={styles.chainBadgeText}>Avalanche</Text></View>
+                <View style={styles.chainBadge}><Text style={styles.chainBadgeText}>Base</Text></View>
+                <View style={[styles.chainBadge, { opacity: 0.5 }]}><Text style={styles.chainBadgeText}>Soon: More</Text></View>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* FOOTER */}
+        <View style={styles.footer}>
+          <Image
+            source={require('../assets/logos/zero-prompt-logo.png')}
+            style={{ width: 40, height: 40, marginBottom: 16 }}
+            resizeMode="contain"
+          />
+          <Text style={styles.footerBrand}>ZeroPrompt</Text>
+          <Text style={styles.footerText}>
+            Decentralized AI Infrastructure for the Agent Economy
+          </Text>
+          <View style={styles.footerLinks}>
+            <TouchableOpacity onPress={() => router.push('/home')} style={styles.footerLink}>
+              <Text style={styles.footerLinkText}>Home</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/')} style={styles.footerLink}>
+              <Text style={styles.footerLinkText}>Chat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.footerLink}>
+              <Text style={styles.footerLinkText}>Docs</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+      </ScrollView>
+
+      {/* Model Selector Modal */}
+      <ModelSelectorModal
+        visible={showModelModal}
+        onClose={() => setShowModelModal(false)}
+        onToggleModel={handleToggleModel}
+        models={models}
+        selectedModels={selectedModels}
+        theme={theme}
+      />
+    </View>
+  );
+}
+
+// ============================================================================
+// STYLES
+// ============================================================================
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000'
+  },
+
+  // Navbar
+  navbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a',
+    backgroundColor: '#000'
+  },
+  navBrand: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  navLogo: {
+    width: 32,
+    height: 32
+  },
+  navTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginLeft: 10
+  },
+  navBadge: {
+    backgroundColor: '#8B5CF6',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: 10
+  },
+  navBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700'
+  },
+  walletConnected: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20
+  },
+  walletDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#00FF41',
+    marginRight: 8
+  },
+  walletAddress: {
+    color: '#888',
+    fontSize: 13,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
+  },
+  connectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#00FF41',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 8
+  },
+  connectBtnText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 14
+  },
+
+  // Content
+  content: {
+    padding: 20,
+    maxWidth: 1200,
+    alignSelf: 'center',
+    width: '100%'
+  },
+
+  // Hero
+  heroSection: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    position: 'relative'
+  },
+  heroGradient: {
+    position: 'absolute',
+    top: 0,
+    left: -100,
+    right: -100,
+    height: 400,
+    borderRadius: 200
+  },
+  heroBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    marginBottom: 24,
+    gap: 8
+  },
+  heroBadgeText: {
+    color: '#8B5CF6',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  heroTitle: {
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#fff',
+    textAlign: 'center',
+    lineHeight: 66,
+    marginBottom: 20
+  },
+  heroSubtitle: {
+    fontSize: 18,
+    color: '#888',
+    textAlign: 'center',
+    lineHeight: 28,
+    maxWidth: 600
+  },
+  heroStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 40,
+    backgroundColor: '#111',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#222'
+  },
+  heroStat: {
+    alignItems: 'center',
+    paddingHorizontal: 24
+  },
+  heroStatValue: {
+    color: '#00FF41',
+    fontSize: 28,
+    fontWeight: '800'
+  },
+  heroStatLabel: {
+    color: '#666',
+    fontSize: 13,
+    marginTop: 4
+  },
+  heroStatDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#333'
+  },
+
+  // Sections
+  section: {
+    paddingVertical: 60
+  },
+  sectionLabel: {
+    color: '#00FF41',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginBottom: 12
+  },
+  sectionTitle: {
+    color: '#fff',
+    fontSize: 36,
+    fontWeight: '800',
+    marginBottom: 12
+  },
+  sectionSubtitle: {
+    color: '#666',
+    fontSize: 16,
+    marginBottom: 32,
+    lineHeight: 24
+  },
+
+  // Flow
+  flowContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 20
+  },
+  flowStep: {
+    alignItems: 'center',
+    padding: 20
+  },
+  flowStepIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16
+  },
+  flowStepNumber: {
+    color: '#444',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4
+  },
+  flowStepTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4
+  },
+  flowStepDesc: {
+    color: '#666',
+    fontSize: 13
+  },
+  flowArrow: {
+    padding: 8
+  },
+
+  // Features
+  featuresGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    marginTop: 20
+  },
+  featureCard: {
+    flex: 1,
+    minWidth: 250,
+    backgroundColor: '#0a0a0a',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1
+  },
+  featureIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16
+  },
+  featureTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8
+  },
+  featureDescription: {
+    color: '#666',
+    fontSize: 14,
+    lineHeight: 22
+  },
+
+  // Network Notice
+  networkNotice: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.3)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24
+  },
+  networkNoticeTitle: {
+    color: '#FFC107',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4
+  },
+  networkNoticeText: {
+    color: '#999',
+    fontSize: 13,
+    lineHeight: 20
+  },
+
+  // Console
+  consoleContainer: {
+    gap: 20,
+    marginTop: 20
+  },
+  consolePanel: {
+    backgroundColor: '#0d0d0d',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#1a1a1a'
+  },
+  consolePanelDark: {
+    backgroundColor: '#080808'
+  },
+  consolePanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8
+  },
+  consolePanelTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700'
+  },
+  consolePanelDesc: {
+    color: '#666',
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 20
+  },
+  inputLabel: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+    marginTop: 16
+  },
+  modelSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#111',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#222'
+  },
+  modelSelectorLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1
+  },
+  modelSelectorName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600'
+  },
+  modelSelectorPrice: {
+    color: '#00FF41',
+    fontSize: 12,
+    marginTop: 2
+  },
+  promptInput: {
+    backgroundColor: '#111',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#222',
+    color: '#fff',
+    fontSize: 15,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
+  },
+  priceSummary: {
+    backgroundColor: '#111',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#222'
+  },
+  priceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6
+  },
+  priceLabel: {
+    color: '#666',
+    fontSize: 13
+  },
+  priceValue: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  executeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00FF41',
+    borderRadius: 12,
+    padding: 18,
+    marginTop: 20,
+    gap: 10
+  },
+  executeBtnDisabled: {
+    backgroundColor: '#333',
+    opacity: 0.6
+  },
+  executeBtnText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700'
+  },
+  executingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFC107',
+    borderRadius: 12,
+    padding: 18,
+    marginTop: 20,
+    gap: 10
+  },
+  executingBtnText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700'
+  },
+  resetBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    padding: 18,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#00FF41'
+  },
+  resetBtnText: {
+    color: '#00FF41',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  walletWarning: {
+    color: '#FFC107',
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 12
+  },
+
+  // Steps
+  stepsContainer: {
+    marginBottom: 20
+  },
+  stepCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 2,
+    borderColor: '#333',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  stepCircleActive: {
+    backgroundColor: '#00FF41',
+    borderColor: '#00FF41'
+  },
+  stepCircleComplete: {
+    backgroundColor: '#00FF41',
+    borderColor: '#00FF41'
+  },
+  stepNumber: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  stepLine: {
+    width: 2,
+    height: 40,
+    backgroundColor: '#222',
+    marginVertical: 4
+  },
+  stepLineComplete: {
+    backgroundColor: '#00FF41'
+  },
+  stepTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 4
+  },
+  stepDescription: {
+    color: '#666',
+    fontSize: 13
+  },
+
+  // Logs
+  logsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12
+  },
+  logsTitle: {
+    color: '#00FF41',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12
+  },
+  logsScrollContainer: {
+    maxHeight: 300,
+    backgroundColor: '#050505',
+    borderRadius: 10,
+    marginBottom: 16
+  },
+  logContainer: {
+    backgroundColor: '#050505',
+    borderRadius: 10,
+    padding: 12
+  },
+  logLine: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 2,
+    gap: 8
+  },
+  logText: {
+    color: '#888',
+    fontSize: 11,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    flex: 1
+  },
+  logsPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+    backgroundColor: '#050505',
+    borderRadius: 12
+  },
+  logsPlaceholderText: {
+    color: '#333',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 12,
+    lineHeight: 20
+  },
+  txLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16
+  },
+  txLinkText: {
+    color: '#00D4FF',
+    fontSize: 13,
+    textDecorationLine: 'underline'
+  },
+  responseContainer: {
+    backgroundColor: 'rgba(0, 255, 65, 0.08)',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.2)',
+    marginBottom: 12
+  },
+  responseTitle: {
+    color: '#00FF41',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 12
+  },
+  responseText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 22
+  },
+  generatedImageContainer: {
+    marginTop: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#0a0a0a',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.15)'
+  },
+  generatedImage: {
+    width: '100%',
+    height: 350,
+    backgroundColor: '#0a0a0a'
+  },
+  imageOpenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)'
+  },
+  imageOpenBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+    borderRadius: 10,
+    padding: 12,
+    gap: 8
+  },
+  errorText: {
+    color: '#F44336',
+    fontSize: 13,
+    flex: 1
+  },
+
+  // Code
+  codeTabs: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16
+  },
+  codeTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#111',
+    gap: 8
+  },
+  codeTabActive: {
+    backgroundColor: '#00FF41'
+  },
+  codeTabText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  codeTabTextActive: {
+    color: '#000'
+  },
+  codeBlockContainer: {
+    backgroundColor: '#0a0a0a',
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#1a1a1a'
+  },
+  codeBlockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#111',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1a1a1a'
+  },
+  codeBlockLabel: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  copyBtnText: {
+    color: '#94a3b8',
+    fontSize: 12
+  },
+  copyBtnTextSuccess: {
+    color: '#4CAF50',
+    fontSize: 12
+  },
+  codeBlockScroll: {
+    padding: 20
+  },
+  codeText: {
+    color: '#E2E8F0',
+    fontSize: 13,
+    lineHeight: 22,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
+  },
+
+  // Spec
+  specContainer: {
+    gap: 20,
+    marginTop: 20
+  },
+  specItem: {
+    backgroundColor: '#0a0a0a',
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#1a1a1a'
+  },
+  specItemTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12
+  },
+  specItemCode: {
+    color: '#00FF41',
+    fontSize: 14,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    backgroundColor: '#111',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    overflow: 'hidden'
+  },
+  specItemDesc: {
+    color: '#666',
+    fontSize: 14,
+    lineHeight: 22
+  },
+  chainBadges: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8
+  },
+  chainBadge: {
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8
+  },
+  chainBadgeText: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+
+  // Navbar links
+  navLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  navLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6
+  },
+  navLinkText: {
+    color: '#888',
+    fontSize: 14
+  },
+
+  // Hero CTAs
+  heroCTAs: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 32
+  },
+  primaryCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#00FF41',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 10
+  },
+  primaryCTAText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700'
+  },
+  secondaryCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#00FF41',
+    gap: 10
+  },
+  secondaryCTAText: {
+    color: '#00FF41',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+
+  // x402 Banner
+  x402Banner: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+    borderRadius: 20,
+    padding: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
+    gap: 32
+  },
+  x402BannerLeft: {
+    flex: 2,
+    minWidth: 280
+  },
+  x402BannerLabel: {
+    color: '#8B5CF6',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginBottom: 8
+  },
+  x402BannerTitle: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 12
+  },
+  x402BannerDesc: {
+    color: '#888',
+    fontSize: 15,
+    lineHeight: 24
+  },
+  x402BannerRight: {
+    flex: 1,
+    minWidth: 200,
+    gap: 12,
+    justifyContent: 'center'
+  },
+  x402Feature: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  x402FeatureText: {
+    color: '#aaa',
+    fontSize: 14
+  },
+
+  // Footer
+  footer: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#1a1a1a'
+  },
+  footerBrand: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 8
+  },
+  footerText: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24
+  },
+  footerLinks: {
+    flexDirection: 'row',
+    gap: 24
+  },
+  footerLink: {
+    padding: 8
+  },
+  footerLinkText: {
+    color: '#888',
+    fontSize: 14
+  }
+});

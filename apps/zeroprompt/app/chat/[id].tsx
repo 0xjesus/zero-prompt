@@ -618,6 +618,31 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
             <Text style={[styles.newChatText, { color: theme.background }]}>NEW_OPERATION</Text>
         </TouchableOpacity>
 
+        {/* API x402 Link */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginHorizontal: 16,
+            marginBottom: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            borderWidth: 1,
+            borderColor: 'rgba(139, 92, 246, 0.3)',
+            borderRadius: 10
+          }}
+          onPress={() => { router.push('/protocol'); if(!isDesktop) onClose(); }}
+        >
+          <Code color="#8B5CF6" size={18} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#8B5CF6', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>API_x402</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Pay-per-request AI</Text>
+          </View>
+          <ChevronRight color="#8B5CF6" size={16} />
+        </TouchableOpacity>
+
         {/* Conversation Search */}
         <View style={{paddingHorizontal: 16, marginBottom: 12}}>
             <View style={{

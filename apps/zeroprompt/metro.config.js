@@ -29,11 +29,10 @@ config.resolver.disableHierarchicalLookup = true;
 config.resolver.extraNodeModules = {
   "@noble/hashes": path.resolve(projectRoot, "node_modules/@noble/hashes"),
   "@noble/curves": path.resolve(projectRoot, "node_modules/@noble/curves"),
+  "expo-linear-gradient": path.resolve(workspaceRoot, "node_modules/expo-linear-gradient"),
   "@phosphor-icons/webcomponents": path.resolve(workspaceRoot, "node_modules/@phosphor-icons/webcomponents"),
-  // Shim for Coinbase Wallet SDK - not supported in Expo web
-  "@coinbase/wallet-sdk": path.resolve(projectRoot, "shims/coinbase-wallet-sdk.js"),
-  // Shim for porto - not available
-  "porto/internal": path.resolve(projectRoot, "shims/empty-module.js"),
+  // Force Coinbase SDK to resolve to our empty shim
+  "@coinbase/wallet-sdk": path.resolve(projectRoot, "shims/empty-module.js"),
 };
 
 // Block problematic module bundles

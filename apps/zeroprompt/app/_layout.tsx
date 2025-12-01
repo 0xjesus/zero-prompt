@@ -16,6 +16,7 @@ export default function RootLayout() {
               <Stack.Screen name="home" />
               <Stack.Screen name="models" />
               <Stack.Screen name="docs" />
+              <Stack.Screen name="protocol" />
               <Stack.Screen name="dashboard" />
             </Stack>
             <StatusBar style="auto" />

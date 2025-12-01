@@ -3,7 +3,11 @@
   "compilerOptions": {
     "jsx": "react-native",
     "allowJs": true,
-    "types": ["expo-router"]
+    "types": ["expo-router"],
+    "baseUrl": ".",
+    "paths": {
+      "@coinbase/wallet-sdk": ["./shims/empty-module.js"]
+    }
   },
-  "include": ["app", "index.js"]
+  "include": ["app", "index.js", "shims"]
 }
