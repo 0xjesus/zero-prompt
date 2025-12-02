@@ -2,19 +2,15 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [main]
   pull_request:
-    branches: [ "main", "master" ]
-
-env:
-  PROJECT_PATH: /var/www/zero-prompt
+    branches: [main]
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -22,7 +18,7 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm ci
 
       - name: Generate Prisma Client
@@ -31,21 +27,12 @@ jobs:
       - name: Build API
         run: npm run build -w apps/api
 
-      - name: Compile Smart Contracts
-        run: npm run compile -w apps/contracts
-
-      # Run API tests if available
-      # - name: Run API Tests
-      #   run: npm run test -w apps/api
-      #   env:
-      #     DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
   deploy:
-    needs: build-and-test
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    needs: build
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to Server via SSH
+      - name: Deploy to Server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -55,69 +42,38 @@ jobs:
           script: |
             set -e
 
-            # ----------------------------------------------------------------------
-            # DEPLOYMENT SCRIPT FOR ZEROPROMPT
-            # Project path: /var/www/zero-prompt
-            # Frontend: 0prompt.xyz
-            # API: api.0prompt.xyz
-            # ----------------------------------------------------------------------
+            # Config from secrets
+            PROJECT_PATH="${{ secrets.PROJECT_PATH }}"
+            PM2_PROCESS="${{ secrets.PM2_PROCESS_NAME }}"
+            API_URL="${{ secrets.API_URL }}"
 
-            PROJECT_PATH="/var/www/zero-prompt"
-
-            echo "=========================================="
-            echo "Starting deployment to $PROJECT_PATH"
-            echo "=========================================="
-
-            # Load NVM if available
+            # Load NVM
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-            # 1. Navigate to project directory
-            cd $PROJECT_PATH || { echo "Project directory not found!"; exit 1; }
-
-            # 2. Pull latest changes
-            echo "Pulling latest changes..."
-            git fetch origin main
-            git reset --hard origin/main
-
-            # 3. Install dependencies
-            echo "Installing dependencies..."
-            npm ci
-
-            # 4. Generate Prisma Client
-            echo "Generating Prisma client..."
-            npm run db:generate -w apps/api
-
-            # 5. Run database migrations
-            echo "Running database migrations..."
-            npm run db:migrate -w apps/api
-
-            # 6. Build API
-            echo "Building API..."
-            npm run build -w apps/api
-
-            # 7. Build Frontend (Expo Web)
-            echo "Building frontend..."
-            cd apps/zeroprompt
-            EXPO_PUBLIC_API_URL=https://api.0prompt.xyz npx expo export --platform web
             cd $PROJECT_PATH
 
-            # 8. Compile Smart Contracts
-            echo "Compiling smart contracts..."
-            npm run compile -w apps/contracts
+            echo "📥 Pulling latest code..."
+            git fetch origin main && git reset --hard origin/main
 
-            # 9. Restart PM2 process
-            echo "Restarting PM2 process..."
-            pm2 reload ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
+            echo "📦 Installing dependencies..."
+            npm ci
 
-            # 10. Save PM2 process list
+            echo "🗄️ Running Prisma generate & migrate..."
+            npm run db:generate -w apps/api
+            npm run db:migrate -w apps/api
+
+            echo "🔨 Building API..."
+            npm run build -w apps/api
+
+            echo "🌐 Building frontend..."
+            cd apps/zeroprompt
+            EXPO_PUBLIC_API_URL=$API_URL npx expo export --platform web --output-dir dist
+            cd $PROJECT_PATH
+
+            echo "🔄 Restarting PM2..."
+            pm2 reload $PM2_PROCESS || pm2 start ecosystem.config.js
             pm2 save
 
-            # 11. Show status
-            echo "=========================================="
-            echo "Deployment complete!"
-            echo "=========================================="
+            echo "✅ Deploy complete!"
             pm2 status
-            echo ""
-            echo "Frontend: https://0prompt.xyz"
-            echo "API: https://api.0prompt.xyz"

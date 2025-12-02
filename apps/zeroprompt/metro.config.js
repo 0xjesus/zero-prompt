@@ -31,14 +31,44 @@ config.resolver.extraNodeModules = {
   "@noble/curves": path.resolve(projectRoot, "node_modules/@noble/curves"),
   "expo-linear-gradient": path.resolve(workspaceRoot, "node_modules/expo-linear-gradient"),
   "@phosphor-icons/webcomponents": path.resolve(workspaceRoot, "node_modules/@phosphor-icons/webcomponents"),
-  // Force Coinbase SDK to resolve to our empty shim
+  // Force problematic SDKs to resolve to our empty shim
   "@coinbase/wallet-sdk": path.resolve(projectRoot, "shims/empty-module.js"),
+  "@metamask/sdk": path.resolve(projectRoot, "shims/empty-module.js"),
+  "porto": path.resolve(projectRoot, "shims/porto/index.js"),
+  "porto/internal": path.resolve(projectRoot, "shims/porto/internal.js"),
 };
 
 // Block problematic module bundles
 config.resolver.blockList = [
   /node_modules\/@wagmi\/connectors\/dist\/esm\/exports\/index\.bundle.*/,
 ];
+
+// Custom resolver to redirect problematic modules to shims
+const shimmedModules = {
+  "@metamask/sdk": path.resolve(projectRoot, "shims/empty-module.js"),
+  "@coinbase/wallet-sdk": path.resolve(projectRoot, "shims/empty-module.js"),
+  "porto": path.resolve(projectRoot, "shims/porto/index.js"),
+  "porto/internal": path.resolve(projectRoot, "shims/porto/internal.js"),
+};
+
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Check if this module should be shimmed
+  if (shimmedModules[moduleName]) {
+    return {
+      filePath: shimmedModules[moduleName],
+      type: "sourceFile",
+    };
+  }
+  // Shim all @phosphor-icons/webcomponents subpath imports
+  if (moduleName.startsWith("@phosphor-icons/webcomponents/")) {
+    return {
+      filePath: path.resolve(projectRoot, "shims/empty-module.js"),
+      type: "sourceFile",
+    };
+  }
+  // Fall back to default resolution
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 // Configure transformer for better compatibility
 config.transformer.getTransformOptions = async () => ({
