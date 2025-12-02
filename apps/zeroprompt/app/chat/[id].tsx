@@ -40,6 +40,7 @@ import { useBilling } from "../../context/BillingContext";
 import UpsaleModal from "../../components/UpsaleModal";
 import { WalletConnectModal, WalletSidebarSection, MigrationBanner } from "../../components/WalletConnectionUI";
 import ModelSelectorModal from "../../components/ModelSelectorModal";
+import { API_URL } from "../../config/api";
 
 type Model = {
   id: number;
@@ -88,7 +89,6 @@ type ChatMessage = {
   }[];
 };
 
-const API_URL = "http://localhost:3001";
 const FONT_MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
 // Custom scrollbar styles for web

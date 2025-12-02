@@ -29,8 +29,7 @@ import {
   Cpu,
   ChevronRight
 } from "lucide-react-native";
-
-const API_URL = "http://localhost:3001";
+import { API_URL } from "../config/api";
 
 interface AdminInfo {
   owner: string;

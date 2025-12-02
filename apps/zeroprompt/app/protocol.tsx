@@ -15,11 +15,11 @@ import {
   MessageSquare, Home, Bot, Cpu
 } from 'lucide-react-native';
 import ModelSelectorModal from '../components/ModelSelectorModal';
+import { API_URL } from '../config/api';
 
 // ============================================================================
 // CONFIG
 // ============================================================================
-const API_URL = Platform.OS === 'web' ? 'http://localhost:3001' : 'http://10.0.2.2:3001';
 // Checksummed address using viem's getAddress
 const MERCHANT_ADDRESS = getAddress('0x209f0baca0c23edc57881b26b68fc4148123b039');
 

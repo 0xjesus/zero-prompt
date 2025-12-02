@@ -2,8 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Platform } from "react-native";
 import { useAccount, useDisconnect, useSignMessage } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
-
-const API_URL = "http://localhost:3001";
+import { API_URL } from "../config/api";
 
 type User = {
   walletAddress: string;

@@ -3,8 +3,7 @@ import { Platform } from "react-native";
 import { ethers } from "ethers";
 import { useAuth } from "./AuthContext";
 import { getNetworkIdByChainId, SUPPORTED_CHAINS, DEFAULT_CHAIN_ID } from "../config/wagmi";
-
-const API_URL = "http://localhost:3001";
+import { API_URL } from "../config/api";
 
 // Types
 export interface UserAccount {

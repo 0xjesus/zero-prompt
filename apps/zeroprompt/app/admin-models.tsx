@@ -34,8 +34,7 @@ import {
 } from "lucide-react-native";
 
 const ZEROPROMPT_LOGO = require('../assets/logos/zero-prompt-logo.png');
-
-const API_URL = "http://localhost:3001";
+import { API_URL } from "../config/api";
 
 interface ModelStats {
   totalActive: number;

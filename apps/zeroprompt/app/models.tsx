@@ -16,10 +16,9 @@ import {
     Search, Brain, PenTool, Globe, Eye, Mic, Sparkles, ArrowRight,
     ArrowLeft, Filter, ChevronDown, X, Layers, Star, Check, ExternalLink, Gift
 } from 'lucide-react-native';
+import { API_URL } from '../config/api';
 
 const ZEROPROMPT_LOGO = require('../assets/logos/zero-prompt-logo.png');
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
 // ============================================================================
 // DESIGN SYSTEM

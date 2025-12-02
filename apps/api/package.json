@@ -7,8 +7,9 @@
     "dev": "TS_NODE_TRANSPILE_ONLY=1 ts-node-dev --respawn --ignore-watch node_modules --poll src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "db:push": "prisma db push",
-    "db:generate": "prisma generate",
+    "db:push": "dotenv -e ../../.env -- prisma db push",
+    "db:generate": "dotenv -e ../../.env -- prisma generate",
+    "db:migrate": "dotenv -e ../../.env -- prisma migrate deploy",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest watch",
@@ -36,11 +37,13 @@
     "@types/node-cron": "^3.0.11",
     "@types/supertest": "^2.0.16",
     "@types/uuid": "^10.0.0",
+    "dotenv-cli": "^7.4.2",
     "prettier": "^3.2.5",
     "prisma": "^5.16.2",
     "supertest": "^6.3.3",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.4.5",
+    "undici": "^7.16.0",
     "vitest": "^1.5.0"
   }
 }

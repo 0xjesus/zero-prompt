@@ -25,8 +25,7 @@ import {
 
 const ZEROPROMPT_LOGO = require('../assets/logos/zero-prompt-logo.png');
 import { useTheme } from "../context/ThemeContext";
-
-const API_URL = "http://localhost:3001";
+import { API_URL } from "../config/api";
 
 type Model = {
   id: number;
