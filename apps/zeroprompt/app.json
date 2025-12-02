@@ -6,11 +6,32 @@
     "scheme": "zeroprompt",
     "platforms": ["ios", "android", "web"],
     "orientation": "portrait",
+    "icon": "./assets/logos/zero-prompt-logo.png",
     "splash": {
-      "backgroundColor": "#0c0c0f"
+      "image": "./assets/logos/zero-prompt-logo.png",
+      "backgroundColor": "#000000",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "bundleIdentifier": "com.zeroprompt.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.zeroprompt.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logos/zero-prompt-logo.png",
+        "backgroundColor": "#000000"
+      }
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/logos/zero-prompt-logo.png",
+      "name": "ZeroPrompt - Decentralized AI for Agents",
+      "shortName": "ZeroPrompt",
+      "description": "Access 300+ AI models without API keys. Pay-per-request with crypto via x402 protocol. Built for autonomous AI agents on Avalanche.",
+      "lang": "en",
+      "themeColor": "#000000",
+      "backgroundColor": "#000000"
     },
     "extra": {
       "eas": {
