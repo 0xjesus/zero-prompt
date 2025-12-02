@@ -183,7 +183,7 @@ export default function ProtocolPage() {
   const [quoteError, setQuoteError] = useState<string | null>(null);
 
   // Code tab
-  const [activeTab, setActiveTab] = useState<'curl' | 'typescript'>('curl');
+  const [activeTab, setActiveTab] = useState<'curl' | 'typescript' | 'python'>('curl');
 
   // Fetch models from DB (same as chat) - only paid models for this demo
   useEffect(() => {
@@ -503,37 +503,94 @@ export default function ProtocolPage() {
     setError(null);
   };
 
-  // Generated code
-  const curlCode = useMemo(() => `# x402 Protocol - Pay-per-Request AI API
-# Step 1: Send AVAX payment to merchant
-# Step 2: Include transaction hash in X-PAYMENT header
+  // Generated code - ALWAYS use production API URL
+  const PROD_API_URL = 'https://api.0prompt.xyz';
 
-curl -X POST "${API_URL}/agent/generate" \\
+  const curlCode = useMemo(() => `# ══════════════════════════════════════════════════════════════
+# x402 Protocol - ZeroPrompt AI API
+# Production Endpoint: ${PROD_API_URL}
+# ══════════════════════════════════════════════════════════════
+
+# STEP 1: Get a price quote first (optional but recommended)
+curl -X POST "${PROD_API_URL}/agent/quote" \\
   -H "Content-Type: application/json" \\
-  -H "X-PAYMENT: $(echo '{"txHash":"0x...YOUR_TX_HASH"}' | base64)" \\
   -d '{
     "model": "${modelId}",
     "prompt": "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
-  }'`, [modelId, prompt]);
+  }'
 
-  const typescriptCode = useMemo(() => `// x402 Protocol - TypeScript Implementation
+# STEP 2: Send AVAX payment to merchant address
+# Merchant: ${MERCHANT_ADDRESS}
+# Amount: ${estimatedCostAVAX} AVAX (adjust based on quote)
+# Network: Avalanche C-Chain (43114)
+
+# STEP 3: Call API with transaction hash in X-PAYMENT header
+curl -X POST "${PROD_API_URL}/agent/generate" \\
+  -H "Content-Type: application/json" \\
+  -H "X-PAYMENT: $(echo -n '{"txHash":"0xYOUR_TX_HASH_HERE"}' | base64)" \\
+  -d '{
+    "model": "${modelId}",
+    "prompt": "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
+  }'`, [modelId, prompt, estimatedCostAVAX]);
+
+  const typescriptCode = useMemo(() => `// ══════════════════════════════════════════════════════════════
+// x402 Protocol - ZeroPrompt AI API
+// Production Endpoint: ${PROD_API_URL}
+// ══════════════════════════════════════════════════════════════
+
 import { createWalletClient, http, parseEther } from 'viem';
 import { avalanche } from 'viem/chains';
+import { privateKeyToAccount } from 'viem/accounts';
 
-const MERCHANT = "${MERCHANT_ADDRESS}";
-const API_URL = "${API_URL}";
+// ═══════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ═══════════════════════════════════════════════════════════════
+const API_URL = '${PROD_API_URL}';
+const MERCHANT = '${MERCHANT_ADDRESS}';
 
-async function callAI(prompt: string, model: string) {
-  // 1. Send payment
+// For agents: use private key (keep secure!)
+const account = privateKeyToAccount('0xYOUR_PRIVATE_KEY');
+
+const walletClient = createWalletClient({
+  account,
+  chain: avalanche,
+  transport: http('https://api.avax.network/ext/bc/C/rpc')
+});
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN FUNCTION - Call any AI model with x402 payment
+// ═══════════════════════════════════════════════════════════════
+async function callZeroPrompt(prompt: string, model: string) {
+  // 1. Get price quote from API
+  const quoteRes = await fetch(\`\${API_URL}/agent/quote\`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, prompt })
+  });
+  const quote = await quoteRes.json();
+
+  if (!quote.success) {
+    throw new Error(\`Quote failed: \${quote.error}\`);
+  }
+
+  console.log(\`Price: \${quote.payment.recommendedAVAX} AVAX\`);
+
+  // 2. Send AVAX payment
   const txHash = await walletClient.sendTransaction({
-    to: MERCHANT,
-    value: parseEther("${estimatedCostAVAX}")
+    to: MERCHANT as \`0x\${string}\`,
+    value: parseEther(quote.payment.recommendedAVAX.toString())
   });
 
-  // 2. Create x402 payment header
-  const paymentHeader = btoa(JSON.stringify({ txHash }));
+  console.log(\`Payment sent: \${txHash}\`);
 
-  // 3. Call API with payment proof
+  // 3. Wait for confirmation (optional but recommended)
+  await new Promise(r => setTimeout(r, 3000));
+
+  // 4. Create x402 payment header
+  const paymentPayload = { txHash };
+  const paymentHeader = btoa(JSON.stringify(paymentPayload));
+
+  // 5. Call API with payment proof
   const response = await fetch(\`\${API_URL}/agent/generate\`, {
     method: 'POST',
     headers: {
@@ -543,14 +600,113 @@ async function callAI(prompt: string, model: string) {
     body: JSON.stringify({ model, prompt })
   });
 
-  return response.json();
+  const result = await response.json();
+
+  if (result.error) {
+    throw new Error(\`API Error: \${result.error}\`);
+  }
+
+  return result;
 }
 
-// Usage
-const result = await callAI(
+// ═══════════════════════════════════════════════════════════════
+// USAGE EXAMPLE
+// ═══════════════════════════════════════════════════════════════
+const result = await callZeroPrompt(
   "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
   "${modelId}"
-);`, [modelId, prompt, estimatedCostAVAX]);
+);
+
+console.log('AI Response:', result.result);`, [modelId, prompt, estimatedCostAVAX]);
+
+  const pythonCode = useMemo(() => `# ══════════════════════════════════════════════════════════════
+# x402 Protocol - ZeroPrompt AI API (Python)
+# Production Endpoint: ${PROD_API_URL}
+# pip install web3 requests
+# ══════════════════════════════════════════════════════════════
+
+from web3 import Web3
+import requests
+import base64
+import json
+import time
+
+# ═══════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════
+API_URL = '${PROD_API_URL}'
+MERCHANT = '${MERCHANT_ADDRESS}'
+PRIVATE_KEY = '0xYOUR_PRIVATE_KEY'  # Keep secure!
+
+# Connect to Avalanche C-Chain
+w3 = Web3(Web3.HTTPProvider('https://api.avax.network/ext/bc/C/rpc'))
+account = w3.eth.account.from_key(PRIVATE_KEY)
+
+def call_zeroprompt(prompt: str, model: str) -> dict:
+    """Call ZeroPrompt AI API with x402 payment"""
+
+    # 1. Get price quote
+    quote_res = requests.post(
+        f'{API_URL}/agent/quote',
+        json={'model': model, 'prompt': prompt}
+    )
+    quote = quote_res.json()
+
+    if not quote.get('success'):
+        raise Exception(f"Quote failed: {quote.get('error')}")
+
+    avax_amount = quote['payment']['recommendedAVAX']
+    print(f"Price: {avax_amount} AVAX")
+
+    # 2. Send AVAX payment
+    tx = {
+        'to': MERCHANT,
+        'value': w3.to_wei(avax_amount, 'ether'),
+        'gas': 21000,
+        'gasPrice': w3.eth.gas_price,
+        'nonce': w3.eth.get_transaction_count(account.address),
+        'chainId': 43114  # Avalanche Mainnet
+    }
+
+    signed = account.sign_transaction(tx)
+    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
+    print(f"Payment sent: {tx_hash.hex()}")
+
+    # 3. Wait for confirmation
+    time.sleep(3)
+
+    # 4. Create x402 payment header
+    payment_payload = {'txHash': tx_hash.hex()}
+    payment_header = base64.b64encode(
+        json.dumps(payment_payload).encode()
+    ).decode()
+
+    # 5. Call API with payment proof
+    response = requests.post(
+        f'{API_URL}/agent/generate',
+        headers={
+            'Content-Type': 'application/json',
+            'X-PAYMENT': payment_header
+        },
+        json={'model': model, 'prompt': prompt}
+    )
+
+    result = response.json()
+
+    if result.get('error'):
+        raise Exception(f"API Error: {result['error']}")
+
+    return result
+
+# ═══════════════════════════════════════════════════════════════
+# USAGE EXAMPLE
+# ═══════════════════════════════════════════════════════════════
+result = call_zeroprompt(
+    "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}",
+    "${modelId}"
+)
+
+print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
 
   return (
     <View style={styles.container}>
@@ -1077,11 +1233,18 @@ const result = await callAI(
               <FileCode size={16} color={activeTab === 'typescript' ? '#000' : '#666'} />
               <Text style={[styles.codeTabText, activeTab === 'typescript' && styles.codeTabTextActive]}>TypeScript</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.codeTab, activeTab === 'python' && styles.codeTabActive]}
+              onPress={() => setActiveTab('python')}
+            >
+              <Code size={16} color={activeTab === 'python' ? '#000' : '#666'} />
+              <Text style={[styles.codeTabText, activeTab === 'python' && styles.codeTabTextActive]}>Python</Text>
+            </TouchableOpacity>
           </View>
 
           <CodeBlock
-            code={activeTab === 'curl' ? curlCode : typescriptCode}
-            label={activeTab === 'curl' ? 'Terminal' : 'TypeScript'}
+            code={activeTab === 'curl' ? curlCode : activeTab === 'typescript' ? typescriptCode : pythonCode}
+            label={activeTab === 'curl' ? 'Terminal' : activeTab === 'typescript' ? 'TypeScript' : 'Python'}
           />
         </View>
 
