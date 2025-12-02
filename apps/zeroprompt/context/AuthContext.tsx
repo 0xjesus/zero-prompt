@@ -102,22 +102,39 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
   // Authenticate with backend when wallet connects
   const authenticateWithBackend = useCallback(async (walletAddress: string) => {
     // Prevent duplicate auth attempts (React Strict Mode protection)
-    const authKey = `${walletAddress}-${Date.now()}`;
     if (authInProgress.current) {
       console.log("[Auth] ⚠️ Auth already in progress, skipping");
       return;
     }
 
-    // Check if we recently tried to auth this wallet (within 5 seconds)
+    // Prevent duplicate signature requests
+    if (signatureRequested.current) {
+      console.log("[Auth] ⚠️ Signature already requested, skipping duplicate");
+      return;
+    }
+
+    // Check if we recently tried to auth this wallet (within 10 seconds)
     if (lastAuthAttempt.current) {
       const [lastWallet, lastTime] = lastAuthAttempt.current.split('-');
-      if (lastWallet === walletAddress && Date.now() - parseInt(lastTime) < 5000) {
+      const timeSinceLastAttempt = Date.now() - parseInt(lastTime);
+      if (lastWallet === walletAddress && timeSinceLastAttempt < 10000) {
         console.log("[Auth] ⚠️ Recent auth attempt for this wallet, skipping duplicate");
         return;
       }
     }
 
+    // Clear any mismatched session before authenticating
+    const savedWallet = localStorage.getItem("wallet_address");
+    if (savedWallet && savedWallet.toLowerCase() !== walletAddress.toLowerCase()) {
+      console.log("[Auth] 🧹 Clearing mismatched session:", savedWallet, "→", walletAddress);
+      localStorage.removeItem("session_token");
+      localStorage.removeItem("wallet_address");
+      setToken(null);
+      setUser(null);
+    }
+
     authInProgress.current = true;
+    signatureRequested.current = true;
     lastAuthAttempt.current = `${walletAddress}-${Date.now()}`;
     setIsAuthenticating(true);
     setConnectionError(null);
@@ -148,12 +165,6 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
       console.log("[Auth] 📝 Message to sign:", message);
 
       // Step 2: Sign the message with wallet
-      // Check if signature already requested (prevent double popup)
-      if (signatureRequested.current) {
-        console.log("[Auth] ⚠️ Signature already requested, skipping duplicate");
-        return;
-      }
-      signatureRequested.current = true;
       console.log("[Auth] 🔏 Requesting signature from wallet...");
       const signature = await signMessageAsync({ message });
       console.log("[Auth] ✅ Signature obtained:", signature.substring(0, 20) + "...");
@@ -231,20 +242,28 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
       address,
       hasUser: !!user,
       hasToken: !!token,
-      authInProgress: authInProgress.current
+      authInProgress: authInProgress.current,
+      signatureRequested: signatureRequested.current
     });
 
-    if (isConnected && address && !user && !authInProgress.current) {
+    // Don't do anything if auth is already in progress or signature was requested
+    if (authInProgress.current || signatureRequested.current) {
+      console.log("[Auth] ⏭️ Auth/signature already in progress, ignoring wallet state change");
+      return;
+    }
+
+    if (isConnected && address && !user) {
       // Wallet just connected, authenticate with backend
-      // Add small delay to prevent React Strict Mode double-firing
+      // Add delay to prevent React Strict Mode double-firing
       const timeoutId = setTimeout(() => {
-        if (!authInProgress.current && !user) {
+        // Double-check protection flags before proceeding
+        if (!authInProgress.current && !signatureRequested.current && !user) {
           console.log("[Auth] 🔗 Wallet connected, starting auth for:", address);
           authenticateWithBackend(address);
         } else {
           console.log("[Auth] ⏭️ Skipping auth - already in progress or user exists");
         }
-      }, 100);
+      }, 200); // Increased delay for more stability
       return () => clearTimeout(timeoutId);
     } else if (!isConnected && user) {
       // Wallet disconnected - but DON'T auto logout if we have a valid session

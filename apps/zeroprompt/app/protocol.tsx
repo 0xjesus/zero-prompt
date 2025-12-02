@@ -8,6 +8,8 @@ import { parseEther, getAddress } from 'viem';
 import { Stack, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { WalletConnectModal } from '../components/WalletConnectionUI';
 import {
   Layers, Code, Shield, Zap, ChevronDown, Copy, Check, Terminal, FileCode,
   Play, Wallet, ArrowRight, CheckCircle, Circle, Loader, AlertCircle,
@@ -159,9 +161,18 @@ export default function ProtocolPage() {
   const isDesktop = width > 1024;
   const isTablet = width > 768;
 
-  // Wallet
+  // Wallet - Use the same auth system as /chat
   const { address, isConnected } = useAccount();
   const { sendTransactionAsync } = useSendTransaction();
+  const {
+    user,
+    openWalletModal,
+    isConnecting,
+    isAuthenticating,
+    connectionError,
+    migratedChats,
+    clearMigratedChats
+  } = useAuth();
 
   // Models
   const [models, setModels] = useState<any[]>([]);
@@ -741,9 +752,19 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
               <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>
             </View>
           ) : (
-            <TouchableOpacity style={styles.connectBtn}>
-              <Wallet size={16} color="#000" />
-              <Text style={styles.connectBtnText}>Connect</Text>
+            <TouchableOpacity
+              style={styles.connectBtn}
+              onPress={openWalletModal}
+              disabled={isConnecting || isAuthenticating}
+            >
+              {isConnecting || isAuthenticating ? (
+                <ActivityIndicator size="small" color="#000" />
+              ) : (
+                <>
+                  <Wallet size={16} color="#000" />
+                  <Text style={styles.connectBtnText}>Connect</Text>
+                </>
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -1079,9 +1100,12 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
               )}
 
               {!isConnected && (
-                <Text style={styles.walletWarning}>
-                  💡 Connect your wallet to test the x402 payment flow
-                </Text>
+                <TouchableOpacity onPress={openWalletModal} style={styles.walletWarningBtn}>
+                  <Wallet size={16} color="#FFC107" />
+                  <Text style={styles.walletWarning}>
+                    Connect wallet to test the x402 payment flow
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
 
@@ -1317,6 +1341,18 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
         models={models}
         selectedModels={selectedModels}
         theme={theme}
+      />
+
+      {/* Wallet Connection Modal - Same as /chat */}
+      <WalletConnectModal
+        visible={isConnecting || isAuthenticating}
+        onClose={() => {}}
+        theme={theme}
+        isConnecting={isConnecting}
+        isAuthenticating={isAuthenticating}
+        connectionError={connectionError}
+        migratedChats={migratedChats}
+        onClearMigratedChats={clearMigratedChats}
       />
     </View>
   );
@@ -1757,11 +1793,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600'
   },
+  walletWarningBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.3)'
+  },
   walletWarning: {
     color: '#FFC107',
     fontSize: 12,
-    textAlign: 'center',
-    marginTop: 12
+    textAlign: 'center'
   },
 
   // Steps
