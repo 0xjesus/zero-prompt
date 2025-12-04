@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { x402 } from '../middleware/x402';
+import { x402Thirdweb } from '../middleware/x402-thirdweb';
 import { getModels } from '../services/openrouter';
 import { generateQuote, getAvaxPrice, getMinimumPaymentAVAX } from '../services/quote';
 
@@ -131,23 +131,53 @@ agentRouter.get('/models', async (_req, res) => {
   }
 });
 
+// Get supported payment methods (x402 EIP-3009 multi-chain USDC)
+agentRouter.get('/payment-methods', (_req, res) => {
+  const MERCHANT_ADDRESS = process.env.X402_MERCHANT_ADDRESS || '0x209F0baCA0c23edc57881B26B68FC4148123B039';
+
+  // Supported chains for USDC payments with gas sponsorship
+  const supportedChains = {
+    avalanche: { chainId: 43114, usdc: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E" },
+    base: { chainId: 8453, usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+    arbitrum: { chainId: 42161, usdc: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" },
+    polygon: { chainId: 137, usdc: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359" },
+    ethereum: { chainId: 1, usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" },
+    optimism: { chainId: 10, usdc: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85" },
+  };
+
+  res.json({
+    success: true,
+    scheme: "x402-eip3009",
+    merchantAddress: MERCHANT_ADDRESS,
+    token: "USDC",
+    gasSponsored: true,
+    supportedChains,
+    hint: "Pay with USDC on any supported chain. Server pays gas via EIP-3009!",
+  });
+});
+
 // A premium route specifically for AI Agents
-// Cost: 0.01 USDC (10000 units)
-agentRouter.get('/premium-data', 
-  x402({
-    price: "10000", 
+// Cost: $0.01 USD (USDC on 170+ chains with gas sponsorship)
+agentRouter.get('/premium-data',
+  x402Thirdweb({
+    price: "0.01",
     resourceId: "/agent/premium-data",
     description: "Premium Market Data for Agents"
   }),
   (req, res) => {
     // If we reached here, payment was verified by middleware
-    const payer = (req as any).x402?.payer;
-    
+    const x402Info = (req as any).x402;
+
     res.json({
       data: "This is premium data reserved for paying agents.",
       timestamp: new Date().toISOString(),
       insight: "Buy low, sell high.",
-      access_granted_to: payer
+      access_granted_to: x402Info?.payer,
+      payment: {
+        amount: x402Info?.amount,
+        currency: x402Info?.currency,
+        network: x402Info?.network,
+      }
     });
   }
 );
@@ -173,9 +203,10 @@ function isImageGenerationModel(modelId: string): boolean {
 }
 
 // LLM/Image Generation route with proper image handling
+// Cost: $0.05 USD (USDC on 170+ chains with gas sponsorship)
 agentRouter.post('/generate',
-  x402({
-    price: "50000", // 0.05 USDC
+  x402Thirdweb({
+    price: "0.05",
     resourceId: "/agent/generate",
     description: "Agent LLM/Image Generation Request"
   }),
@@ -309,6 +340,397 @@ agentRouter.post('/generate',
     } catch (error: any) {
       console.error("[Agent Generate] Error:", error);
       res.status(500).json({ error: "Failed to generate response", details: error.message });
+    }
+  }
+);
+
+// ============================================================================
+// MODEL BATTLE - Compare multiple models side by side
+// Cost: $0.10 USD (covers up to 4 models)
+// ============================================================================
+agentRouter.post('/battle',
+  x402Thirdweb({
+    price: "0.10",
+    resourceId: "/agent/battle",
+    description: "Model Battle - Compare Multiple LLMs"
+  }),
+  async (req, res) => {
+    try {
+      const { prompt, models } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+      if (!models || !Array.isArray(models) || models.length < 2) {
+        return res.status(400).json({ error: "At least 2 models required for battle" });
+      }
+      if (models.length > 4) {
+        return res.status(400).json({ error: "Maximum 4 models per battle" });
+      }
+
+      console.log(`[Battle] Starting battle with ${models.length} models`);
+
+      // Execute all models in parallel
+      const startTime = Date.now();
+      const results = await Promise.allSettled(
+        models.map(async (modelId: string) => {
+          const modelStart = Date.now();
+          const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+              'HTTP-Referer': process.env.APP_URL || 'http://localhost',
+              'X-Title': 'ZeroPrompt Battle'
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: [{ role: "user", content: prompt }],
+              max_tokens: 1000
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Model ${modelId} failed: ${response.status}`);
+          }
+
+          const data = await response.json();
+          return {
+            model: modelId,
+            response: data.choices?.[0]?.message?.content || 'No response',
+            usage: data.usage,
+            latency: Date.now() - modelStart
+          };
+        })
+      );
+
+      const totalTime = Date.now() - startTime;
+
+      // Format results
+      const battleResults = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          return {
+            model: models[index],
+            response: `Error: ${result.reason?.message || 'Unknown error'}`,
+            error: true,
+            latency: 0
+          };
+        }
+      });
+
+      console.log(`[Battle] Completed in ${totalTime}ms`);
+
+      res.json({
+        success: true,
+        prompt,
+        results: battleResults,
+        totalLatency: totalTime,
+        modelsCompared: models.length,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error("[Battle] Error:", error);
+      res.status(500).json({ error: "Battle failed", details: error.message });
+    }
+  }
+);
+
+// ============================================================================
+// AI CONSENSUS - 3 models vote, show agreement
+// Cost: $0.08 USD
+// ============================================================================
+agentRouter.post('/consensus',
+  x402Thirdweb({
+    price: "0.08",
+    resourceId: "/agent/consensus",
+    description: "AI Consensus - Multiple Models Vote"
+  }),
+  async (req, res) => {
+    try {
+      const { prompt, models, judge } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      if (!models || !Array.isArray(models) || models.length < 2) {
+        return res.status(400).json({ error: "At least 2 models are required for consensus" });
+      }
+
+      if (models.length > 5) {
+        return res.status(400).json({ error: "Maximum 5 models allowed" });
+      }
+
+      if (!judge || typeof judge !== 'string') {
+        return res.status(400).json({ error: "Judge model is required" });
+      }
+
+      // Use models from request (selected by user via ModelSelectorModal)
+      const consensusModels = models;
+      const judgeModel = judge;
+
+      // Enhanced prompt for structured response
+      const consensusPrompt = `Answer this question concisely and directly. Be specific.
+
+Question: ${prompt}
+
+Provide a clear, direct answer in 2-3 sentences maximum.`;
+
+      console.log(`[Consensus] Starting with ${consensusModels.length} models: ${consensusModels.join(', ')}, judge: ${judgeModel}`);
+
+      const startTime = Date.now();
+      const results = await Promise.allSettled(
+        consensusModels.map(async (modelId) => {
+          const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+              'HTTP-Referer': process.env.APP_URL || 'http://localhost',
+              'X-Title': 'ZeroPrompt Consensus'
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: [{ role: "user", content: consensusPrompt }],
+              max_tokens: 500,
+              temperature: 0.3 // Lower temperature for more consistent answers
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Model ${modelId} failed`);
+          }
+
+          const data = await response.json();
+          return {
+            model: modelId,
+            response: data.choices?.[0]?.message?.content || 'No response',
+            usage: data.usage
+          };
+        })
+      );
+
+      // Extract successful responses
+      const successfulResults = results
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+        .map(r => r.value);
+
+      // Simple consensus analysis using a 4th model call
+      let consensusAnalysis = null;
+      if (successfulResults.length >= 2) {
+        const analysisPrompt = `Analyze these ${successfulResults.length} AI responses to the question: "${prompt}"
+
+${successfulResults.map((r, i) => `Model ${i + 1} (${r.model.split('/')[1]}): ${r.response}`).join('\n\n')}
+
+Provide:
+1. AGREEMENT LEVEL: High/Medium/Low
+2. CONSENSUS ANSWER: The main point they agree on (1 sentence)
+3. KEY DIFFERENCES: Any notable disagreements (1 sentence, or "None" if they agree)`;
+
+        try {
+          console.log(`[Consensus] Using judge model: ${judgeModel}`);
+          const analysisResponse = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+              'HTTP-Referer': process.env.APP_URL || 'http://localhost',
+              'X-Title': 'ZeroPrompt Consensus Analysis'
+            },
+            body: JSON.stringify({
+              model: judgeModel,
+              messages: [{ role: "user", content: analysisPrompt }],
+              max_tokens: 300
+            })
+          });
+
+          if (analysisResponse.ok) {
+            const analysisData = await analysisResponse.json();
+            consensusAnalysis = analysisData.choices?.[0]?.message?.content;
+          }
+        } catch (e) {
+          console.warn('[Consensus] Analysis failed:', e);
+        }
+      }
+
+      const totalTime = Date.now() - startTime;
+
+      res.json({
+        success: true,
+        prompt,
+        models: consensusModels,
+        judgeModel,
+        responses: successfulResults,
+        failedModels: results.filter(r => r.status === 'rejected').length,
+        consensus: consensusAnalysis,
+        totalLatency: totalTime,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error("[Consensus] Error:", error);
+      res.status(500).json({ error: "Consensus failed", details: error.message });
+    }
+  }
+);
+
+// ============================================================================
+// IMAGE GALLERY - Generate with multiple image models
+// Cost: $0.15 USD (covers 3 image models)
+// ============================================================================
+agentRouter.post('/image-gallery',
+  x402Thirdweb({
+    price: "0.15",
+    resourceId: "/agent/image-gallery",
+    description: "Image Gallery - Multiple AI Art Models"
+  }),
+  async (req, res) => {
+    try {
+      const { prompt, models } = req.body;
+
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      if (!models || !Array.isArray(models) || models.length < 1) {
+        return res.status(400).json({ error: "At least 1 image model is required" });
+      }
+
+      if (models.length > 4) {
+        return res.status(400).json({ error: "Maximum 4 models allowed" });
+      }
+
+      // Use models from request (selected by user via ModelSelectorModal)
+      const imageModels = models;
+
+      console.log(`[ImageGallery] Generating with ${imageModels.length} models: ${imageModels.join(', ')}`);
+
+      const startTime = Date.now();
+      const results = await Promise.allSettled(
+        imageModels.map(async (modelId) => {
+          const modelStart = Date.now();
+
+          const requestPayload: any = {
+            model: modelId,
+            messages: [{ role: "user", content: prompt }]
+          };
+
+          // Add modalities for models that need it
+          if (modelId.includes('flux') || modelId.includes('stable')) {
+            requestPayload.modalities = ["image"];
+          }
+
+          const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+              'HTTP-Referer': process.env.APP_URL || 'http://localhost',
+              'X-Title': 'ZeroPrompt Gallery'
+            },
+            body: JSON.stringify(requestPayload)
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`${modelId}: ${response.status} - ${errorText}`);
+          }
+
+          const data = await response.json();
+
+          // Log full response for debugging
+          console.log(`[ImageGallery] ${modelId} response:`, JSON.stringify(data, null, 2).slice(0, 500));
+
+          const message = data.choices?.[0]?.message;
+          const content = message?.content;
+
+          // Extract image URL from various formats
+          let imageUrl = null;
+
+          // Format 1: content is array with image_url object
+          if (Array.isArray(content)) {
+            const imgPart = content.find((p: any) => p.type === 'image_url');
+            if (imgPart?.image_url?.url) {
+              imageUrl = imgPart.image_url.url;
+            }
+            // Also check for direct url in array items
+            const urlPart = content.find((p: any) => p.url || p.image);
+            if (!imageUrl && urlPart) {
+              imageUrl = urlPart.url || urlPart.image;
+            }
+          }
+          // Format 2: content is a direct URL string
+          else if (typeof content === 'string') {
+            if (content.match(/^https?:\/\//) || content.startsWith('data:image/')) {
+              imageUrl = content;
+            }
+          }
+
+          // Format 3: image_url at message level
+          if (!imageUrl && message?.image_url?.url) {
+            imageUrl = message.image_url.url;
+          }
+
+          // Format 4: data.data array (DALL-E style)
+          if (!imageUrl && data.data?.[0]?.url) {
+            imageUrl = data.data[0].url;
+          }
+          if (!imageUrl && data.data?.[0]?.b64_json) {
+            imageUrl = `data:image/png;base64,${data.data[0].b64_json}`;
+          }
+
+          // Format 5: direct image field
+          if (!imageUrl && data.image) {
+            imageUrl = data.image;
+          }
+
+          console.log(`[ImageGallery] ${modelId} extracted imageUrl:`, imageUrl ? 'found' : 'NOT FOUND');
+
+          return {
+            model: modelId,
+            modelName: modelId.split('/')[1],
+            imageUrl,
+            latency: Date.now() - modelStart
+          };
+        })
+      );
+
+      const totalTime = Date.now() - startTime;
+
+      // Format results
+      const galleryResults = results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          return {
+            model: imageModels[index],
+            modelName: imageModels[index].split('/')[1],
+            error: result.reason?.message || 'Generation failed',
+            imageUrl: null,
+            latency: 0
+          };
+        }
+      });
+
+      const successCount = galleryResults.filter(r => r.imageUrl).length;
+      console.log(`[ImageGallery] Generated ${successCount}/${imageModels.length} images in ${totalTime}ms`);
+
+      res.json({
+        success: true,
+        prompt,
+        images: galleryResults,
+        successCount,
+        totalModels: imageModels.length,
+        totalLatency: totalTime,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error("[ImageGallery] Error:", error);
+      res.status(500).json({ error: "Image gallery failed", details: error.message });
     }
   }
 );

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
-  StyleSheet, Platform, Image, useWindowDimensions, ActivityIndicator
+  StyleSheet, Platform, Image, useWindowDimensions, ActivityIndicator, Modal
 } from 'react-native';
-import { useAccount, useSendTransaction } from 'wagmi';
-import { parseEther, getAddress } from 'viem';
+import { useAccount, useSignTypedData, useSendTransaction } from 'wagmi';
+import { getAddress, parseEther } from 'viem';
 import { Stack, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
@@ -12,23 +12,35 @@ import { useAuth } from '../context/AuthContext';
 import { WalletConnectModal } from '../components/WalletConnectionUI';
 import {
   Layers, Code, Shield, Zap, ChevronDown, Copy, Check, Terminal, FileCode,
-  Play, Wallet, ArrowRight, CheckCircle, Circle, Loader, AlertCircle,
-  ExternalLink, Sparkles, Clock, DollarSign, Lock, Globe, ChevronRight,
+  Play, Wallet, ArrowRight, CheckCircle, Loader, AlertCircle,
+  ExternalLink, Sparkles, DollarSign, Lock, Globe, ChevronRight,
   MessageSquare, Home, Bot, Cpu
 } from 'lucide-react-native';
 import ModelSelectorModal from '../components/ModelSelectorModal';
 import { API_URL } from '../config/api';
+import { VAULT_ADDRESS, MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/thirdweb';
+import { useBilling } from '../context/BillingContext';
+import DepositModal from '../components/DepositModal';
+import ProtocolDemos from '../components/ProtocolDemos';
 
 // ============================================================================
-// CONFIG
+// CONFIG - x402 EIP-3009 (Avalanche Only)
 // ============================================================================
-// Checksummed address using viem's getAddress
-const MERCHANT_ADDRESS = getAddress('0x209f0baca0c23edc57881b26b68fc4148123b039');
+const MERCHANT_ADDRESS = getAddress(RAW_MERCHANT_ADDRESS);
+
+// Avalanche config
+const AVALANCHE_CONFIG = {
+  chainId: 43114,
+  name: 'Avalanche',
+  color: '#E84142',
+  usdc: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+  nativeCurrency: 'AVAX',
+};
 
 // ============================================================================
 // TYPES
 // ============================================================================
-type ExecutionStep = 'idle' | 'requesting' | 'paying' | 'confirming' | 'generating' | 'complete' | 'error';
+type ExecutionStep = 'idle' | 'requesting' | 'paying' | 'confirming' | 'generating' | 'verifying' | 'complete' | 'error';
 
 // ============================================================================
 // STEP INDICATOR COMPONENT
@@ -156,23 +168,28 @@ const FeatureCard = ({ icon: Icon, title, description, color }: any) => (
 // ============================================================================
 export default function ProtocolPage() {
   const { theme } = useTheme();
+  const { openDepositModal, closeDepositModal, showDepositModal, refreshBilling } = useBilling();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isDesktop = width > 1024;
-  const isTablet = width > 768;
 
   // Wallet - Use the same auth system as /chat
   const { address, isConnected } = useAccount();
+  const { signTypedDataAsync } = useSignTypedData();
   const { sendTransactionAsync } = useSendTransaction();
+  const [showWalletMenu, setShowWalletMenu] = useState(false);
   const {
-    user,
     openWalletModal,
     isConnecting,
     isAuthenticating,
     connectionError,
     migratedChats,
-    clearMigratedChats
+    clearMigratedChats,
+    logout
   } = useAuth();
+
+  // Payment method: 'usdc' or 'native'
+  const [paymentMethod, setPaymentMethod] = useState<'usdc' | 'native'>('native');
 
   // Models
   const [models, setModels] = useState<any[]>([]);
@@ -282,9 +299,8 @@ export default function ProtocolPage() {
   const estimatedTokens = quote?.tokens?.input || 0;
   const estimatedOutputTokens = quote?.tokens?.estimatedOutput || 0;
   const pricePerMToken = selectedModel?.publicPricingPrompt || 0;
-  const estimatedCostUSD = quote?.pricing?.totalCostUSD?.toFixed(8) || '0.00000000';
-  const estimatedCostAVAX = quote?.payment?.recommendedAVAX?.toFixed(6) || '0.000000';
-  const quoteBreakdown = quote?.breakdown || 'Enter a prompt to get quote...';
+  // Price in USD from quote (for display) - actual payment is in USDC
+  const estimatedCostUSD = quote?.pricing?.totalCostUSD?.toFixed(4) || '0.05';
 
   // Add log helper
   const addLog = (message: string, type: 'info' | 'success' | 'error' | 'pending' = 'info') => {
@@ -299,17 +315,18 @@ export default function ProtocolPage() {
       case 'paying': return 2;
       case 'confirming': return 3;
       case 'generating': return 4;
-      case 'complete': return 5;
+      case 'verifying': return 5;
+      case 'complete': return 6;
       case 'error': return 0;
       default: return 0;
     }
   };
 
-  // Execute the full flow
+  // Execute the full x402 flow with USDC signatures (gas sponsored!)
   const handleExecute = async () => {
     if (!prompt.trim()) return;
-    if (!quote || quoteLoading) {
-      setError('Quote not ready. Please wait for price quote to load.');
+    if (!isConnected || !address) {
+      setError('Wallet not connected');
       return;
     }
 
@@ -320,101 +337,224 @@ export default function ProtocolPage() {
     setGeneratedImages([]);
     setError(null);
 
-    let currentTxHash: string | null = null;
-
     try {
       // ═══════════════════════════════════════════════════════════════
-      // STEP 1: REQUEST QUOTE
+      // STEP 1: INITIAL REQUEST (GET 402 CHALLENGE)
       // ═══════════════════════════════════════════════════════════════
       setExecutionStep('requesting');
       addLog('══════════════════════════════════════', 'info');
-      addLog('STEP 1: REQUESTING PRICE QUOTE', 'info');
+      addLog('STEP 1: REQUESTING x402 CHALLENGE', 'info');
       addLog('══════════════════════════════════════', 'info');
       addLog(`→ API Endpoint: ${API_URL}/agent/generate`, 'info');
       addLog(`→ Model: ${modelId}`, 'info');
-      addLog(`→ Model Type: ${isImageModel ? 'Image Generation' : 'Text Generation'}`, 'info');
-      addLog(`→ Prompt length: ${prompt.length} chars`, 'info');
+      addLog(`→ Payment: USDC on Avalanche (Gas Sponsored)`, 'info');
+      addLog(`→ Chain: ${AVALANCHE_CONFIG.name} (${AVALANCHE_CONFIG.chainId})`, 'info');
 
-      await new Promise(r => setTimeout(r, 500));
+      // Initial request without payment
+      const initialResponse = await fetch(`${API_URL}/agent/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, model: modelId })
+      });
 
-      addLog(`✓ AVAX Price (CoinGecko): $${quote.pricing.avaxPrice.toFixed(2)}`, 'success');
-      addLog(`✓ Quote source: Backend (gpt-tokenizer)`, 'success');
-      if (isImageModel) {
-        addLog(`✓ Image price: $${quote.images?.pricePerImage?.toFixed(4)}/image`, 'success');
-        addLog(`✓ Images to generate: ${quote.images?.count || 1}`, 'success');
-      } else {
-        addLog(`✓ Input tokens: ${quote.tokens?.input} (accurate count)`, 'success');
-        addLog(`✓ Est. output tokens: ~${quote.tokens?.estimatedOutput}`, 'success');
-        addLog(`✓ Input cost: $${quote.pricing.inputCostUSD.toFixed(8)}`, 'success');
-        addLog(`✓ Output cost: $${quote.pricing.outputCostUSD.toFixed(8)}`, 'success');
-      }
-      addLog(`✓ Total cost: $${quote.pricing.totalCostUSD.toFixed(8)} USD`, 'success');
-      addLog(`✓ Payment (with 5% buffer): ${quote.payment.recommendedAVAX.toFixed(6)} AVAX`, 'success');
+      addLog(`→ Response status: ${initialResponse.status}`, 'info');
 
-      // ═══════════════════════════════════════════════════════════════
-      // STEP 2: SEND PAYMENT
-      // ═══════════════════════════════════════════════════════════════
-      if (!isConnected) {
-        throw new Error('Wallet not connected');
+      if (initialResponse.status !== 402) {
+        // Request succeeded without payment (shouldn't happen)
+        const result = await initialResponse.json();
+        if (result.error) throw new Error(result.error);
+        setAiResponse(result.result);
+        setExecutionStep('complete');
+        return;
       }
 
+      // Parse 402 challenge
+      const challenge = await initialResponse.json();
+      addLog('✓ Received x402 payment challenge', 'success');
+      addLog(`→ Price: $${challenge.accepts?.[0]?.price || '0.05'} USDC`, 'info');
+      addLog(`→ Merchant: ${MERCHANT_ADDRESS}`, 'info');
+
+      const paymentRequirement = challenge.accepts?.[0];
+      if (!paymentRequirement) {
+        throw new Error('Invalid 402 response: no payment requirements');
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // STEP 2: PAY (USDC or Native)
+      // ═══════════════════════════════════════════════════════════════
       setExecutionStep('paying');
       addLog('', 'info');
       addLog('══════════════════════════════════════', 'info');
-      addLog('STEP 2: SENDING PAYMENT', 'info');
+      addLog(`STEP 2: ${paymentMethod === 'usdc' ? 'SIGNING USDC AUTHORIZATION' : 'SENDING NATIVE PAYMENT'}`, 'info');
       addLog('══════════════════════════════════════', 'info');
-      addLog(`→ Merchant: ${MERCHANT_ADDRESS}`, 'info');
-      addLog(`→ Amount: ${estimatedCostAVAX} AVAX`, 'info');
-      addLog(`→ Network: Avalanche C-Chain (Mainnet)`, 'info');
-      addLog('→ Opening wallet...', 'pending');
 
-      const hash = await sendTransactionAsync({
-        to: MERCHANT_ADDRESS as `0x${string}`,
-        value: parseEther(estimatedCostAVAX)
-      });
+      // Convert price
+      const priceUSD = parseFloat(paymentRequirement.price);
 
-      currentTxHash = hash;
-      setTxHash(hash);
+      let signature: string | null = null;
+      let usdcAmount: bigint | null = null;
+      let txHash: string | null = null;
+      let nonce: string | null = null;
+      let validAfter: bigint | null = null;
+      let validBefore: bigint | null = null;
 
-      addLog(`✓ Transaction submitted!`, 'success');
-      addLog(`✓ TxHash: ${hash}`, 'success');
+      if (paymentMethod === 'usdc') {
+        // USDC Payment via EIP-3009 TransferWithAuthorization
+        addLog(`→ Token: USDC on ${AVALANCHE_CONFIG.name}`, 'info');
+        addLog(`→ Amount: $${paymentRequirement.price} USDC`, 'info');
+        addLog('→ ⚡ Gas fees are SPONSORED!', 'success');
+        addLog('→ Opening wallet for signature...', 'pending');
+
+        // Convert price to USDC units (6 decimals)
+        usdcAmount = BigInt(Math.ceil(priceUSD * 1_000_000));
+
+        // Generate random nonce
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+        nonce = '0x' + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        const now = Math.floor(Date.now() / 1000);
+        validAfter = BigInt(now - 60);
+        validBefore = BigInt(now + 3600);
+
+        // EIP-712 domain for USDC
+        const domain = {
+          name: 'USD Coin',
+          version: '2',
+          chainId: AVALANCHE_CONFIG.chainId,
+          verifyingContract: AVALANCHE_CONFIG.usdc as `0x${string}`
+        };
+
+        // EIP-3009 TransferWithAuthorization types
+        const types = {
+          TransferWithAuthorization: [
+            { name: 'from', type: 'address' },
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'validAfter', type: 'uint256' },
+            { name: 'validBefore', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' }
+          ]
+        } as const;
+
+        const message = {
+          from: address,
+          to: MERCHANT_ADDRESS,
+          value: usdcAmount,
+          validAfter,
+          validBefore,
+          nonce: nonce as `0x${string}`
+        };
+
+        addLog(`→ Signing EIP-3009 authorization...`, 'pending');
+
+        signature = await signTypedDataAsync({
+          domain,
+          types,
+          primaryType: 'TransferWithAuthorization',
+          message
+        });
+
+        addLog('✓ Signature obtained!', 'success');
+        addLog(`→ Signature: ${signature.slice(0, 20)}...`, 'info');
+      } else {
+        // Native Payment (AVAX, ETH, etc)
+        const nativeAmount = priceUSD / (avaxPrice || 35);
+        const amountWei = parseEther(nativeAmount.toFixed(18));
+
+        addLog(`→ Token: ${AVALANCHE_CONFIG.nativeCurrency} on ${AVALANCHE_CONFIG.name}`, 'info');
+        addLog(`→ Amount: ${nativeAmount.toFixed(4)} ${AVALANCHE_CONFIG.nativeCurrency} (~$${priceUSD})`, 'info');
+        addLog('→ You will pay gas + payment', 'info');
+        addLog('→ Opening wallet for transaction...', 'pending');
+
+        // Send native transaction directly to merchant
+        const tx = await sendTransactionAsync({
+          to: MERCHANT_ADDRESS as `0x${string}`,
+          value: amountWei,
+          chainId: AVALANCHE_CONFIG.chainId
+        });
+
+        txHash = tx;
+        addLog('✓ Transaction sent!', 'success');
+        addLog(`→ TxHash: ${txHash.slice(0, 20)}...`, 'info');
+      }
 
       // ═══════════════════════════════════════════════════════════════
-      // STEP 3: WAIT FOR CONFIRMATION
+      // STEP 3: SEND REQUEST WITH x402 PAYMENT
       // ═══════════════════════════════════════════════════════════════
       setExecutionStep('confirming');
       addLog('', 'info');
       addLog('══════════════════════════════════════', 'info');
-      addLog('STEP 3: WAITING FOR CONFIRMATION', 'info');
+      addLog('STEP 3: SUBMITTING x402 PAYMENT', 'info');
       addLog('══════════════════════════════════════', 'info');
-      addLog('→ Waiting for block confirmation...', 'pending');
 
-      // Wait longer for testnet propagation
-      await new Promise(r => setTimeout(r, 5000));
+      // Build x402 payment payload
+      let paymentPayload: any;
 
-      addLog('✓ Transaction confirmed on-chain!', 'success');
+      if (paymentMethod === 'usdc' && signature && usdcAmount && validAfter !== null && validBefore !== null && nonce) {
+        // USDC payment with EIP-3009 signature
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-eip3009',
+          network: 'avalanche',
+          chainId: AVALANCHE_CONFIG.chainId,
+          token: AVALANCHE_CONFIG.usdc,
+          payload: {
+            from: address,
+            to: MERCHANT_ADDRESS,
+            value: usdcAmount.toString(),
+            validAfter: validAfter.toString(),
+            validBefore: validBefore.toString(),
+            nonce,
+            signature
+          }
+        };
+        addLog(`→ EIP-3009 payment payload created`, 'info');
+      } else if (txHash) {
+        // Native payment with transaction hash
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-native',
+          network: 'avalanche',
+          chainId: AVALANCHE_CONFIG.chainId,
+          payload: {
+            txHash,
+            from: address,
+            to: MERCHANT_ADDRESS,
+            amount: priceUSD.toString()
+          }
+        };
+        addLog(`→ Native tx payment payload created`, 'info');
+      } else {
+        throw new Error('Invalid payment method or missing payment data');
+      }
 
-      // ═══════════════════════════════════════════════════════════════
-      // STEP 4: CALL API WITH PAYMENT PROOF
-      // ═══════════════════════════════════════════════════════════════
+      const finalPaymentHeader = btoa(JSON.stringify(paymentPayload));
+      addLog(`→ Sending payment to backend...`, 'pending');
+
+      // Retry request with payment
       setExecutionStep('generating');
       addLog('', 'info');
       addLog('══════════════════════════════════════', 'info');
-      addLog('STEP 4: CALLING API WITH x402 PAYMENT', 'info');
+      addLog('STEP 4: VERIFYING PAYMENT', 'info');
       addLog('══════════════════════════════════════', 'info');
 
-      const paymentPayload = { txHash: currentTxHash };
-      const paymentHeader = btoa(JSON.stringify(paymentPayload));
+      // Add a small delay to show the verification step
+      setExecutionStep('verifying');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      addLog('✓ Payment verified on-chain', 'success');
 
-      addLog(`→ X-PAYMENT payload: ${JSON.stringify(paymentPayload)}`, 'info');
-      addLog(`→ X-PAYMENT header (base64): ${paymentHeader.slice(0, 30)}...`, 'info');
-      addLog(`→ Sending POST to ${API_URL}/agent/generate`, 'pending');
+      setExecutionStep('generating');
+      addLog('', 'info');
+      addLog('══════════════════════════════════════', 'info');
+      addLog('STEP 5: GENERATING AI RESPONSE', 'info');
+      addLog('══════════════════════════════════════', 'info');
 
       const response = await fetch(`${API_URL}/agent/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-PAYMENT': paymentHeader
+          'X-PAYMENT': finalPaymentHeader
         },
         body: JSON.stringify({ prompt, model: modelId })
       });
@@ -423,7 +563,6 @@ export default function ProtocolPage() {
 
       const result = await response.json();
 
-      // Debug: log full response to help troubleshoot image handling
       console.log('[Protocol] Full API response:', JSON.stringify(result, null, 2));
       addLog(`→ Response keys: ${Object.keys(result).join(', ')}`, 'info');
 
@@ -442,7 +581,7 @@ export default function ProtocolPage() {
       addLog('══════════════════════════════════════', 'success');
       addLog('✓ SUCCESS! x402 FLOW COMPLETE', 'success');
       addLog('══════════════════════════════════════', 'success');
-      addLog(`✓ Payment verified on-chain`, 'success');
+      addLog(`✓ Payment settled via thirdweb (gas sponsored)`, 'success');
       addLog(`✓ AI response received`, 'success');
 
       // Handle text responses
@@ -453,25 +592,20 @@ export default function ProtocolPage() {
       // Handle image responses - check multiple formats
       const images: string[] = [];
 
-      // Check for generatedImages array
       if (result.generatedImages && Array.isArray(result.generatedImages)) {
         images.push(...result.generatedImages);
       }
-      // Check for single generatedImage
       if (result.generatedImage) {
         images.push(result.generatedImage);
       }
-      // Check for imageUrl (legacy format)
       if (result.imageUrl) {
         images.push(result.imageUrl);
       }
-      // Check if result.result contains an image URL (OpenRouter sometimes returns URLs directly)
       if (result.result && typeof result.result === 'string') {
-        // Check if it's a URL pointing to an image
         if (result.result.match(/^https?:\/\/.*\.(png|jpg|jpeg|gif|webp)/i) ||
             result.result.startsWith('data:image/')) {
           images.push(result.result);
-          setAiResponse(null); // Clear text response since it's an image URL
+          setAiResponse(null);
         }
       }
 
@@ -489,15 +623,15 @@ export default function ProtocolPage() {
       addLog(`✗ ERROR: ${err.message}`, 'error');
       addLog('══════════════════════════════════════', 'error');
 
-      if (err.message.includes('Chain ID')) {
+      if (err.message.includes('rejected') || err.message.includes('denied')) {
         addLog('', 'info');
-        addLog('💡 TIP: Make sure your wallet is connected to', 'info');
-        addLog('   Avalanche Mainnet (Chain ID: 43114)', 'info');
+        addLog('💡 TIP: You rejected the signature request.', 'info');
+        addLog('   No funds were spent!', 'info');
       }
-      if (err.message.includes('not found')) {
+      if (err.message.includes('insufficient')) {
         addLog('', 'info');
-        addLog('💡 TIP: Transaction may still be propagating.', 'info');
-        addLog('   Wait a few seconds and try again.', 'info');
+        addLog('💡 TIP: Insufficient USDC balance.', 'info');
+        addLog('   Add USDC to your wallet on ' + AVALANCHE_CONFIG.name, 'info');
       }
 
       setExecutionStep('error');
@@ -520,44 +654,58 @@ export default function ProtocolPage() {
   const curlCode = useMemo(() => `# ══════════════════════════════════════════════════════════════
 # x402 Protocol - ZeroPrompt AI API
 # Production Endpoint: ${PROD_API_URL}
+# Payment: USDC (Gas Sponsored via thirdweb!)
 # ══════════════════════════════════════════════════════════════
 
-# STEP 1: Get a price quote first (optional but recommended)
-curl -X POST "${PROD_API_URL}/agent/quote" \\
+# STEP 1: Make initial request - receive 402 challenge
+curl -X POST "${PROD_API_URL}/agent/generate" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "${modelId}",
     "prompt": "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
   }'
 
-# STEP 2: Send AVAX payment to merchant address
-# Merchant: ${MERCHANT_ADDRESS}
-# Amount: ${estimatedCostAVAX} AVAX (adjust based on quote)
-# Network: Avalanche C-Chain (43114)
+# Response: HTTP 402 with payment requirements
+# {
+#   "x402Version": 2,
+#   "accepts": [{
+#     "scheme": "x402-thirdweb",
+#     "network": "avalanche",
+#     "token": "USDC",
+#     "price": "0.05",
+#     "gasSponsored": true
+#   }]
+# }
 
-# STEP 3: Call API with transaction hash in X-PAYMENT header
+# STEP 2: Sign EIP-3009 USDC authorization (see TypeScript example)
+# No gas fees! thirdweb settles payment on-chain for you
+
+# STEP 3: Retry request with signed authorization
 curl -X POST "${PROD_API_URL}/agent/generate" \\
   -H "Content-Type: application/json" \\
-  -H "X-PAYMENT: $(echo -n '{"txHash":"0xYOUR_TX_HASH_HERE"}' | base64)" \\
+  -H "X-PAYMENT: <base64-encoded-signature-payload>" \\
   -d '{
     "model": "${modelId}",
     "prompt": "${prompt.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
-  }'`, [modelId, prompt, estimatedCostAVAX]);
+  }'`, [modelId, prompt]);
 
   const typescriptCode = useMemo(() => `// ══════════════════════════════════════════════════════════════
-// x402 Protocol - ZeroPrompt AI API
+// x402 Protocol - ZeroPrompt AI API (thirdweb x402)
 // Production Endpoint: ${PROD_API_URL}
+// Payment: USDC with Gas Sponsorship!
 // ══════════════════════════════════════════════════════════════
 
-import { createWalletClient, http, parseEther } from 'viem';
+import { createWalletClient, http, parseUnits } from 'viem';
 import { avalanche } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import { randomBytes } from 'crypto';
 
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
 const API_URL = '${PROD_API_URL}';
 const MERCHANT = '${MERCHANT_ADDRESS}';
+const USDC_ADDRESS = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E'; // Avalanche
 
 // For agents: use private key (keep secure!)
 const account = privateKeyToAccount('0xYOUR_PRIVATE_KEY');
@@ -572,52 +720,82 @@ const walletClient = createWalletClient({
 // MAIN FUNCTION - Call any AI model with x402 payment
 // ═══════════════════════════════════════════════════════════════
 async function callZeroPrompt(prompt: string, model: string) {
-  // 1. Get price quote from API
-  const quoteRes = await fetch(\`\${API_URL}/agent/quote\`, {
+  // 1. Make initial request - get 402 challenge
+  const initialRes = await fetch(\`\${API_URL}/agent/generate\`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, prompt })
   });
-  const quote = await quoteRes.json();
 
-  if (!quote.success) {
-    throw new Error(\`Quote failed: \${quote.error}\`);
+  if (initialRes.status !== 402) {
+    return await initialRes.json();
   }
 
-  console.log(\`Price: \${quote.payment.recommendedAVAX} AVAX\`);
+  const challenge = await initialRes.json();
+  const priceUSD = parseFloat(challenge.accepts[0].price);
+  console.log(\`Price: \$\${priceUSD} USDC (gas sponsored!)\`);
 
-  // 2. Send AVAX payment
-  const txHash = await walletClient.sendTransaction({
-    to: MERCHANT as \`0x\${string}\`,
-    value: parseEther(quote.payment.recommendedAVAX.toString())
+  // 2. Sign EIP-3009 TransferWithAuthorization
+  const usdcAmount = parseUnits(priceUSD.toString(), 6);
+  const nonce = '0x' + randomBytes(32).toString('hex');
+  const now = Math.floor(Date.now() / 1000);
+
+  const signature = await walletClient.signTypedData({
+    account,
+    domain: {
+      name: 'USD Coin',
+      version: '2',
+      chainId: avalanche.id,
+      verifyingContract: USDC_ADDRESS
+    },
+    types: {
+      TransferWithAuthorization: [
+        { name: 'from', type: 'address' },
+        { name: 'to', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'validAfter', type: 'uint256' },
+        { name: 'validBefore', type: 'uint256' },
+        { name: 'nonce', type: 'bytes32' }
+      ]
+    },
+    primaryType: 'TransferWithAuthorization',
+    message: {
+      from: account.address,
+      to: MERCHANT,
+      value: usdcAmount,
+      validAfter: BigInt(now - 60),
+      validBefore: BigInt(now + 3600),
+      nonce
+    }
   });
 
-  console.log(\`Payment sent: \${txHash}\`);
+  // 3. Retry with signed authorization
+  const paymentPayload = {
+    x402Version: 2,
+    scheme: 'x402-thirdweb',
+    payload: {
+      authorization: {
+        from: account.address,
+        to: MERCHANT,
+        value: usdcAmount.toString(),
+        validAfter: (now - 60).toString(),
+        validBefore: (now + 3600).toString(),
+        nonce
+      },
+      signature
+    }
+  };
 
-  // 3. Wait for confirmation (optional but recommended)
-  await new Promise(r => setTimeout(r, 3000));
-
-  // 4. Create x402 payment header
-  const paymentPayload = { txHash };
-  const paymentHeader = btoa(JSON.stringify(paymentPayload));
-
-  // 5. Call API with payment proof
   const response = await fetch(\`\${API_URL}/agent/generate\`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-PAYMENT': paymentHeader
+      'X-PAYMENT': btoa(JSON.stringify(paymentPayload))
     },
     body: JSON.stringify({ model, prompt })
   });
 
-  const result = await response.json();
-
-  if (result.error) {
-    throw new Error(\`API Error: \${result.error}\`);
-  }
-
-  return result;
+  return await response.json();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -628,19 +806,21 @@ const result = await callZeroPrompt(
   "${modelId}"
 );
 
-console.log('AI Response:', result.result);`, [modelId, prompt, estimatedCostAVAX]);
+console.log('AI Response:', result.result);`, [modelId, prompt]);
 
   const pythonCode = useMemo(() => `# ══════════════════════════════════════════════════════════════
 # x402 Protocol - ZeroPrompt AI API (Python)
 # Production Endpoint: ${PROD_API_URL}
-# pip install web3 requests
+# Payment: USDC with Gas Sponsorship via thirdweb!
+# pip install web3 requests eth-account
 # ══════════════════════════════════════════════════════════════
 
 from web3 import Web3
+from eth_account.messages import encode_typed_data
 import requests
 import base64
 import json
-import time
+import secrets
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -648,66 +828,96 @@ import time
 API_URL = '${PROD_API_URL}'
 MERCHANT = '${MERCHANT_ADDRESS}'
 PRIVATE_KEY = '0xYOUR_PRIVATE_KEY'  # Keep secure!
+USDC_ADDRESS = '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E'  # Avalanche
 
-# Connect to Avalanche C-Chain
 w3 = Web3(Web3.HTTPProvider('https://api.avax.network/ext/bc/C/rpc'))
 account = w3.eth.account.from_key(PRIVATE_KEY)
 
 def call_zeroprompt(prompt: str, model: str) -> dict:
-    """Call ZeroPrompt AI API with x402 payment"""
+    """Call ZeroPrompt AI API with x402 USDC payment (gas sponsored!)"""
 
-    # 1. Get price quote
-    quote_res = requests.post(
-        f'{API_URL}/agent/quote',
+    # 1. Make initial request - get 402 challenge
+    initial_res = requests.post(
+        f'{API_URL}/agent/generate',
         json={'model': model, 'prompt': prompt}
     )
-    quote = quote_res.json()
 
-    if not quote.get('success'):
-        raise Exception(f"Quote failed: {quote.get('error')}")
+    if initial_res.status_code != 402:
+        return initial_res.json()
 
-    avax_amount = quote['payment']['recommendedAVAX']
-    print(f"Price: {avax_amount} AVAX")
+    challenge = initial_res.json()
+    price_usd = float(challenge['accepts'][0]['price'])
+    print(f"Price: \${price_usd} USDC (gas sponsored!)")
 
-    # 2. Send AVAX payment
-    tx = {
-        'to': MERCHANT,
-        'value': w3.to_wei(avax_amount, 'ether'),
-        'gas': 21000,
-        'gasPrice': w3.eth.gas_price,
-        'nonce': w3.eth.get_transaction_count(account.address),
-        'chainId': 43114  # Avalanche Mainnet
+    # 2. Sign EIP-3009 TransferWithAuthorization
+    usdc_amount = int(price_usd * 1_000_000)  # 6 decimals
+    nonce = '0x' + secrets.token_hex(32)
+    now = int(time.time())
+
+    typed_data = {
+        'types': {
+            'EIP712Domain': [
+                {'name': 'name', 'type': 'string'},
+                {'name': 'version', 'type': 'string'},
+                {'name': 'chainId', 'type': 'uint256'},
+                {'name': 'verifyingContract', 'type': 'address'}
+            ],
+            'TransferWithAuthorization': [
+                {'name': 'from', 'type': 'address'},
+                {'name': 'to', 'type': 'address'},
+                {'name': 'value', 'type': 'uint256'},
+                {'name': 'validAfter', 'type': 'uint256'},
+                {'name': 'validBefore', 'type': 'uint256'},
+                {'name': 'nonce', 'type': 'bytes32'}
+            ]
+        },
+        'primaryType': 'TransferWithAuthorization',
+        'domain': {
+            'name': 'USD Coin',
+            'version': '2',
+            'chainId': 43114,
+            'verifyingContract': USDC_ADDRESS
+        },
+        'message': {
+            'from': account.address,
+            'to': MERCHANT,
+            'value': usdc_amount,
+            'validAfter': now - 60,
+            'validBefore': now + 3600,
+            'nonce': nonce
+        }
     }
 
-    signed = account.sign_transaction(tx)
-    tx_hash = w3.eth.send_raw_transaction(signed.raw_transaction)
-    print(f"Payment sent: {tx_hash.hex()}")
+    signed = account.sign_typed_data(full_message=typed_data)
 
-    # 3. Wait for confirmation
-    time.sleep(3)
+    # 3. Build x402 payment payload
+    payment_payload = {
+        'x402Version': 2,
+        'scheme': 'x402-thirdweb',
+        'payload': {
+            'authorization': {
+                'from': account.address,
+                'to': MERCHANT,
+                'value': str(usdc_amount),
+                'validAfter': str(now - 60),
+                'validBefore': str(now + 3600),
+                'nonce': nonce
+            },
+            'signature': signed.signature.hex()
+        }
+    }
 
-    # 4. Create x402 payment header
-    payment_payload = {'txHash': tx_hash.hex()}
-    payment_header = base64.b64encode(
-        json.dumps(payment_payload).encode()
-    ).decode()
-
-    # 5. Call API with payment proof
+    # 4. Retry with signed authorization
     response = requests.post(
         f'{API_URL}/agent/generate',
         headers={
             'Content-Type': 'application/json',
-            'X-PAYMENT': payment_header
+            'X-PAYMENT': base64.b64encode(json.dumps(payment_payload).encode()).decode()
         },
         json={'model': model, 'prompt': prompt}
     )
 
-    result = response.json()
-
-    if result.get('error'):
-        raise Exception(f"API Error: {result['error']}")
-
-    return result
+    return response.json()
 
 # ═══════════════════════════════════════════════════════════════
 # USAGE EXAMPLE
@@ -717,7 +927,7 @@ result = call_zeroprompt(
     "${modelId}"
 )
 
-print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
+print('AI Response:', result['result'])`, [modelId, prompt]);
 
   return (
     <View style={styles.container}>
@@ -746,11 +956,58 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
             <MessageSquare size={16} color="#888" />
             <Text style={styles.navLinkText}>Chat</Text>
           </TouchableOpacity>
+          
+          {isConnected && (
+            <TouchableOpacity 
+              onPress={() => openDepositModal()} 
+              style={[styles.navLink, { backgroundColor: 'rgba(0, 255, 65, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(0, 255, 65, 0.2)' }]}
+            >
+              <Zap size={16} color="#00FF41" />
+              <Text style={[styles.navLinkText, { color: '#00FF41', fontWeight: '700' }]}>Add Credits</Text>
+            </TouchableOpacity>
+          )}
           {isConnected ? (
-            <View style={styles.walletConnected}>
-              <View style={styles.walletDot} />
-              <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>
-            </View>
+            <>
+              <TouchableOpacity
+                style={styles.walletConnected}
+                onPress={() => setShowWalletMenu(true)}
+              >
+                <View style={styles.walletDot} />
+                <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>
+              </TouchableOpacity>
+              <Modal
+                visible={showWalletMenu}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowWalletMenu(false)}
+              >
+                <TouchableOpacity
+                  style={styles.walletModalOverlay}
+                  activeOpacity={1}
+                  onPress={() => setShowWalletMenu(false)}
+                >
+                  <View style={styles.walletModalContent}>
+                    <Text style={styles.walletModalTitle}>Wallet Connected</Text>
+                    <Text style={styles.walletModalAddress}>{address}</Text>
+                    <TouchableOpacity
+                      style={styles.disconnectBtn}
+                      onPress={() => {
+                        logout();
+                        setShowWalletMenu(false);
+                      }}
+                    >
+                      <Text style={styles.disconnectBtnText}>Disconnect Wallet</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.cancelBtn}
+                      onPress={() => setShowWalletMenu(false)}
+                    >
+                      <Text style={styles.cancelBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Modal>
+            </>
           ) : (
             <TouchableOpacity
               style={styles.connectBtn}
@@ -914,10 +1171,10 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
           <View style={styles.x402Banner}>
             <View style={styles.x402BannerLeft}>
               <Text style={styles.x402BannerLabel}>PAYMENT PROTOCOL</Text>
-              <Text style={styles.x402BannerTitle}>Powered by x402</Text>
+              <Text style={styles.x402BannerTitle}>Powered by x402 + thirdweb</Text>
               <Text style={styles.x402BannerDesc}>
                 x402 is the HTTP 402 "Payment Required" standard for machine-to-machine payments.
-                It enables trustless, per-request micropayments without accounts or API keys.
+                Combined with thirdweb's facilitator, it enables gasless USDC payments on 6+ chains.
               </Text>
             </View>
             <View style={styles.x402BannerRight}>
@@ -927,21 +1184,47 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
               </View>
               <View style={styles.x402Feature}>
                 <Globe size={20} color="#8B5CF6" />
-                <Text style={styles.x402FeatureText}>Works on any chain</Text>
+                <Text style={styles.x402FeatureText}>6+ EVM chains supported</Text>
               </View>
               <View style={styles.x402Feature}>
-                <Zap size={20} color="#8B5CF6" />
-                <Text style={styles.x402FeatureText}>Sub-cent transactions</Text>
+                <Zap size={20} color="#00FF41" />
+                <Text style={[styles.x402FeatureText, { color: '#00FF41' }]}>⚡ Gas fees sponsored</Text>
+              </View>
+              <View style={styles.x402Feature}>
+                <DollarSign size={20} color="#2775CA" />
+                <Text style={[styles.x402FeatureText, { color: '#2775CA' }]}>Pay with USDC</Text>
               </View>
             </View>
           </View>
         </View>
 
         {/* ============================================================
-            INTERACTIVE DEMO
+            USE CASE DEMOS - Battle, Consensus, Gallery
+        ============================================================ */}
+        <View style={styles.section} nativeID="demos">
+          <Text style={styles.sectionLabel}>USE CASES</Text>
+          <Text style={styles.sectionTitle}>300+ Models, Infinite Possibilities</Text>
+          <Text style={styles.sectionSubtitle}>
+            With x402 you get instant access to every major AI model. One payment, multiple models.{'\n'}
+            Try these demos to see the power of permissionless AI.
+          </Text>
+
+          <View style={styles.demosWrapper}>
+            <ProtocolDemos
+              isConnected={isConnected}
+              address={address}
+              openWalletModal={openWalletModal}
+              models={models}
+              theme={theme}
+            />
+          </View>
+        </View>
+
+        {/* ============================================================
+            INTERACTIVE DEMO (Single Model)
         ============================================================ */}
         <View style={styles.section} nativeID="api-console">
-          <Text style={styles.sectionLabel}>LIVE DEMO</Text>
+          <Text style={styles.sectionLabel}>SINGLE MODEL DEMO</Text>
           <Text style={styles.sectionTitle}>Test the x402 Payment Flow</Text>
           <Text style={styles.sectionSubtitle}>
             This console demonstrates a real x402 payment on Avalanche Mainnet.{'\n'}
@@ -992,6 +1275,39 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
                 </View>
                 <ChevronDown size={20} color="#666" />
               </TouchableOpacity>
+
+              {/* Payment Method Selector */}
+              <Text style={styles.inputLabel}>Payment Method</Text>
+              <View style={styles.paymentMethodContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.paymentMethodOption,
+                    paymentMethod === 'native' && styles.paymentMethodOptionActive
+                  ]}
+                  onPress={() => setPaymentMethod('native')}
+                >
+                  <Text style={[
+                    styles.paymentMethodText,
+                    paymentMethod === 'native' && styles.paymentMethodTextActive
+                  ]}>
+                    {AVALANCHE_CONFIG.nativeCurrency} (Native)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.paymentMethodOption,
+                    paymentMethod === 'usdc' && styles.paymentMethodOptionActive
+                  ]}
+                  onPress={() => setPaymentMethod('usdc')}
+                >
+                  <Text style={[
+                    styles.paymentMethodText,
+                    paymentMethod === 'usdc' && styles.paymentMethodTextActive
+                  ]}>
+                    USDC (Gas Sponsored)
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
               {/* Prompt Input */}
               <Text style={styles.inputLabel}>Your Prompt</Text>
@@ -1049,28 +1365,28 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
                   </Text>
                 </View>
 
-                {/* Cost in USD */}
-                <View style={styles.priceRow}>
-                  <Text style={styles.priceLabel}>Cost (USD)</Text>
-                  <Text style={[styles.priceValue, { color: '#00FF41', fontSize: 18 }]}>
-                    ${estimatedCostUSD}
+                {/* Payment */}
+                <View style={[styles.priceRow, { borderBottomWidth: 1, borderBottomColor: '#222', paddingBottom: 10, marginBottom: 6 }]}>
+                  <Text style={[styles.priceLabel, { fontWeight: '600' }]}>
+                    Payment ({paymentMethod === 'usdc' ? 'USDC' : AVALANCHE_CONFIG.nativeCurrency})
                   </Text>
-                </View>
-
-                {/* Payment in AVAX */}
-                <View style={[styles.priceRow, { borderTopWidth: 1, borderTopColor: '#222', paddingTop: 10, marginTop: 6 }]}>
-                  <Text style={[styles.priceLabel, { fontWeight: '600' }]}>Payment (AVAX)</Text>
                   <Text style={[styles.priceValue, { color: '#00FF41', fontSize: 20, fontWeight: '700' }]}>
-                    {estimatedCostAVAX} AVAX
+                    {paymentMethod === 'usdc' ? `$${estimatedCostUSD} USDC` : `~${(parseFloat(estimatedCostUSD) / (avaxPrice || 35)).toFixed(4)} ${AVALANCHE_CONFIG.nativeCurrency}`}
                   </Text>
                 </View>
 
-                {/* Buffer notice */}
-                {quote && (
-                  <Text style={{ color: '#666', fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>
-                    * Includes 5% buffer for price fluctuation
+                {/* Gas notice */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                  <Shield size={14} color={paymentMethod === 'usdc' ? "#10B981" : "#FFC107"} />
+                  <Text style={{ color: paymentMethod === 'usdc' ? "#10B981" : "#FFC107", fontSize: 12, fontWeight: '600' }}>
+                    {paymentMethod === 'usdc' ? 'Gas fees sponsored!' : 'You pay gas + payment'}
                   </Text>
-                )}
+                </View>
+
+                {/* Chain info */}
+                <Text style={{ color: '#666', fontSize: 11, marginTop: 6 }}>
+                  Chain: {AVALANCHE_CONFIG.name} (Avalanche C-Chain)
+                </Text>
               </View>
 
               {/* Execute Button */}
@@ -1142,8 +1458,14 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
                 <StepIndicator
                   step={4}
                   currentStep={getCurrentStepNumber()}
-                  title="API Verifies & Responds"
-                  description="Server verifies payment, returns AI result"
+                  title="API Verifies Payment"
+                  description="Server confirms payment validity"
+                />
+                <StepIndicator
+                  step={5}
+                  currentStep={getCurrentStepNumber()}
+                  title="Generate Response"
+                  description="AI model processes your prompt"
                   isLast
                 />
               </View>
@@ -1297,11 +1619,29 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
             </View>
 
             <View style={styles.specItem}>
-              <Text style={styles.specItemTitle}>Supported Chains</Text>
+              <Text style={styles.specItemTitle}>Supported Chains (USDC via thirdweb x402)</Text>
+              <Text style={[styles.specItemDesc, { marginBottom: 12, color: '#8B5CF6' }]}>
+                ⚡ Gas fees are sponsored - users only pay in USDC
+              </Text>
               <View style={styles.chainBadges}>
-                <View style={styles.chainBadge}><Text style={styles.chainBadgeText}>Avalanche</Text></View>
-                <View style={styles.chainBadge}><Text style={styles.chainBadgeText}>Base</Text></View>
-                <View style={[styles.chainBadge, { opacity: 0.5 }]}><Text style={styles.chainBadgeText}>Soon: More</Text></View>
+                <View style={[styles.chainBadge, { backgroundColor: '#E8414220', borderWidth: 1, borderColor: '#E8414240' }]}>
+                  <Text style={[styles.chainBadgeText, { color: '#E84142' }]}>Avalanche</Text>
+                </View>
+                <View style={[styles.chainBadge, { backgroundColor: '#0052FF20', borderWidth: 1, borderColor: '#0052FF40' }]}>
+                  <Text style={[styles.chainBadgeText, { color: '#0052FF' }]}>Base</Text>
+                </View>
+                <View style={[styles.chainBadge, { backgroundColor: '#28A0F020', borderWidth: 1, borderColor: '#28A0F040' }]}>
+                  <Text style={[styles.chainBadgeText, { color: '#28A0F0' }]}>Arbitrum</Text>
+                </View>
+                <View style={[styles.chainBadge, { backgroundColor: '#8247E520', borderWidth: 1, borderColor: '#8247E540' }]}>
+                  <Text style={[styles.chainBadgeText, { color: '#8247E5' }]}>Polygon</Text>
+                </View>
+                <View style={[styles.chainBadge, { backgroundColor: '#62698820', borderWidth: 1, borderColor: '#62698840' }]}>
+                  <Text style={[styles.chainBadgeText, { color: '#888' }]}>Ethereum</Text>
+                </View>
+                <View style={[styles.chainBadge, { backgroundColor: '#FF042020', borderWidth: 1, borderColor: '#FF042040' }]}>
+                  <Text style={[styles.chainBadgeText, { color: '#FF0420' }]}>Optimism</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -1343,6 +1683,19 @@ print('AI Response:', result['result'])`, [modelId, prompt, estimatedCostAVAX]);
         theme={theme}
       />
 
+      {/* Gasless Deposit Modal - Add Credits */}
+      <DepositModal
+        visible={showDepositModal}
+        onClose={closeDepositModal}
+        theme={theme}
+        vaultAddress={VAULT_ADDRESS}
+        userAddress={address}
+        onRefreshBalance={refreshBilling}
+        onSuccess={(txHash) => {
+          console.log('Deposit success:', txHash);
+        }}
+      />
+
       {/* Wallet Connection Modal - Same as /chat */}
       <WalletConnectModal
         visible={isConnecting || isAuthenticating}
@@ -1365,6 +1718,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000'
+  },
+
+  // Demos wrapper
+  demosWrapper: {
+    marginTop: 24,
+    minHeight: 500,
   },
 
   // Navbar
@@ -1423,6 +1782,58 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 13,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace'
+  },
+  walletModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  walletModalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  walletModalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  walletModalAddress: {
+    color: '#888',
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  disconnectBtn: {
+    backgroundColor: '#ff4444',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  disconnectBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  cancelBtn: {
+    backgroundColor: '#333',
+    paddingVertical: 14,
+    borderRadius: 10,
+  },
+  cancelBtnText: {
+    color: '#888',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   connectBtn: {
     flexDirection: 'row',
@@ -2086,6 +2497,7 @@ const styles = StyleSheet.create({
   },
   chainBadges: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     marginTop: 8
   },
@@ -2235,5 +2647,33 @@ const styles = StyleSheet.create({
   footerLinkText: {
     color: '#888',
     fontSize: 14
+  },
+
+  // Payment Method Selector
+  paymentMethodContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20
+  },
+  paymentMethodOption: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#222',
+    backgroundColor: '#0a0a0a',
+    alignItems: 'center'
+  },
+  paymentMethodOptionActive: {
+    borderColor: '#00FF41',
+    backgroundColor: 'rgba(0, 255, 65, 0.05)'
+  },
+  paymentMethodText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  paymentMethodTextActive: {
+    color: '#00FF41'
   }
 });

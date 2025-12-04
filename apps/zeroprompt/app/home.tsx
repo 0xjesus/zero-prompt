@@ -632,7 +632,7 @@ export default function HomePage() {
                     ))}
                     {/* x402 Protocol Feature Card */}
                     <TouchableOpacity
-                        onPress={() => router.push('/protocol')}
+                        onPress={() => router.push('/x402')}
                         style={{
                             width: isDesktop ? 'calc(33.33% - 16px)' : isTablet ? 'calc(50% - 12px)' : '100%',
                             backgroundColor: 'rgba(139, 92, 246, 0.1)', // Cyber Purple tint
@@ -770,7 +770,7 @@ export default function HomePage() {
                     </View>
 
                     <TouchableOpacity
-                        onPress={() => router.push('/protocol')}
+                        onPress={() => router.push('/x402')}
                         style={{
                             backgroundColor: COLORS.cyberPurple,
                             paddingHorizontal: 36,

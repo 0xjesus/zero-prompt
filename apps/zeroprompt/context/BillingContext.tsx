@@ -61,6 +61,7 @@ type BillingContextType = {
   isDepositing: boolean;
   error: string | null;
   showUpsaleModal: boolean;
+  showDepositModal: boolean;
   requiredCredits: string | null;
 
   // Derived
@@ -77,6 +78,8 @@ type BillingContextType = {
   executeDeposit: (amountNative: string) => Promise<string | null>;
   openUpsaleModal: (requiredAmount?: string) => void;
   closeUpsaleModal: () => void;
+  openDepositModal: (requiredAmount?: string) => void;
+  closeDepositModal: () => void;
   checkAndPromptCredits: (estimatedCost: number) => boolean;
 };
 
@@ -99,6 +102,7 @@ export const BillingProvider = ({ children }: { children: React.ReactNode }) => 
   const [isDepositing, setIsDepositing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showUpsaleModal, setShowUpsaleModal] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
   const [requiredCredits, setRequiredCredits] = useState<string | null>(null);
 
   // Derived values
@@ -123,14 +127,26 @@ export const BillingProvider = ({ children }: { children: React.ReactNode }) => 
     setRequiredCredits(null);
   }, []);
 
+  // Open deposit modal
+  const openDepositModal = useCallback((requiredAmount?: string) => {
+    setRequiredCredits(requiredAmount || null);
+    setShowDepositModal(true);
+  }, []);
+
+  // Close deposit modal
+  const closeDepositModal = useCallback(() => {
+    setShowDepositModal(false);
+    setRequiredCredits(null);
+  }, []);
+
   // Check credits and prompt if insufficient
   const checkAndPromptCredits = useCallback((estimatedCost: number): boolean => {
     if (currentBalance >= estimatedCost) {
       return true;
     }
-    openUpsaleModal(estimatedCost.toFixed(4));
+    openDepositModal(estimatedCost.toFixed(4));
     return false;
-  }, [currentBalance, openUpsaleModal]);
+  }, [currentBalance, openDepositModal]);
 
   // Fetch supported networks
   const fetchNetworks = useCallback(async () => {
@@ -410,6 +426,7 @@ export const BillingProvider = ({ children }: { children: React.ReactNode }) => 
         isDepositing,
         error,
         showUpsaleModal,
+        showDepositModal,
         requiredCredits,
         currentBalance,
         currencySymbol,
@@ -422,6 +439,8 @@ export const BillingProvider = ({ children }: { children: React.ReactNode }) => 
         executeDeposit,
         openUpsaleModal,
         closeUpsaleModal,
+        openDepositModal,
+        closeDepositModal,
         checkAndPromptCredits
       }}
     >

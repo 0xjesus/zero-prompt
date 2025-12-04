@@ -38,8 +38,11 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useBilling } from "../../context/BillingContext";
 import UpsaleModal from "../../components/UpsaleModal";
+import DepositModal from "../../components/DepositModal";
 import { WalletConnectModal, WalletSidebarSection, MigrationBanner } from "../../components/WalletConnectionUI";
 import ModelSelectorModal from "../../components/ModelSelectorModal";
+import ImageGalleryModal from "../../components/ImageGalleryModal";
+import { VAULT_ADDRESS } from "../../lib/thirdweb";
 import { API_URL } from "../../config/api";
 
 type Model = {
@@ -554,7 +557,7 @@ const SourceList = ({ sources, theme, webSearchType }: any) => {
     );
 };
 
-const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout }: any) => {
+const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal }: any) => {
   const slideAnim = useRef(new Animated.Value(isDesktop ? 0 : -300)).current;
   const [history, setHistory] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -633,7 +636,7 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
             borderColor: 'rgba(139, 92, 246, 0.3)',
             borderRadius: 10
           }}
-          onPress={() => { router.push('/protocol'); if(!isDesktop) onClose(); }}
+          onPress={() => { router.push('/x402'); if(!isDesktop) onClose(); }}
         >
           <Code color="#8B5CF6" size={18} />
           <View style={{ flex: 1 }}>
@@ -641,6 +644,31 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
             <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Pay-per-request AI</Text>
           </View>
           <ChevronRight color="#8B5CF6" size={16} />
+        </TouchableOpacity>
+
+        {/* Image Gallery Button */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginHorizontal: 16,
+            marginBottom: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            backgroundColor: 'rgba(233, 30, 99, 0.1)',
+            borderWidth: 1,
+            borderColor: 'rgba(233, 30, 99, 0.3)',
+            borderRadius: 10
+          }}
+          onPress={() => { onOpenGallery(); if(!isDesktop) onClose(); }}
+        >
+          <ImageIcon color="#E91E63" size={18} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#E91E63', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>IMG_GALLERY</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>View generated images</Text>
+          </View>
+          <ChevronRight color="#E91E63" size={16} />
         </TouchableOpacity>
 
         {/* Conversation Search */}
@@ -742,7 +770,7 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
           onConnectWallet={connectWallet}
           onLogout={logout}
           currentBalance={currentBalance}
-          onAddCredits={() => { router.push('/dashboard'); if(!isDesktop) onClose(); }}
+          onAddCredits={() => { onOpenDepositModal(); if(!isDesktop) onClose(); }}
         />
       </SafeAreaView>
     </Animated.View>
@@ -1926,8 +1954,8 @@ export default function ChatScreen() {
   } = useAuth();
   const {
     currentBalance, currencySymbol, nativePrice,
-    showUpsaleModal, requiredCredits, isDepositing,
-    openUpsaleModal, closeUpsaleModal, executeDeposit,
+    showUpsaleModal, showDepositModal, requiredCredits, isDepositing,
+    openUpsaleModal, closeUpsaleModal, openDepositModal, closeDepositModal, executeDeposit,
     checkAndPromptCredits, refreshBilling
   } = useBilling();
   const { width } = useWindowDimensions();
@@ -1943,6 +1971,7 @@ export default function ChatScreen() {
   const [streaming, setStreaming] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(isDesktop);
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [showImageGallery, setShowImageGallery] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
@@ -2366,7 +2395,7 @@ export default function ChatScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <RNStatusBar barStyle="light-content" />
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} isDesktop={isDesktop} theme={theme} user={user} guestId={guestId} token={token} getHeaders={getHeaders} connectWallet={openWalletModal} startNewChat={startNewChat} isConnecting={isConnecting} isAuthenticating={isAuthenticating} router={router} currentBalance={currentBalance} logout={logout} />
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} isDesktop={isDesktop} theme={theme} user={user} guestId={guestId} token={token} getHeaders={getHeaders} connectWallet={openWalletModal} startNewChat={startNewChat} isConnecting={isConnecting} isAuthenticating={isAuthenticating} router={router} currentBalance={currentBalance} logout={logout} onOpenGallery={() => setShowImageGallery(true)} onOpenDepositModal={openDepositModal} />
 
       {/* Overlay when sidebar is open on mobile (blocks content behind) */}
       {isSidebarOpen && !isDesktop && (
@@ -2794,7 +2823,16 @@ export default function ChatScreen() {
           theme={theme}
       />
 
-      {/* Upsale Modal */}
+      {/* Image Gallery Modal */}
+      <ImageGalleryModal
+          visible={showImageGallery}
+          onClose={() => setShowImageGallery(false)}
+          theme={theme}
+          getHeaders={getHeaders}
+          onNavigateToChat={(id) => router.push(`/chat/${id}`)}
+      />
+
+      {/* Upsale Modal (Legacy) */}
       <UpsaleModal
         visible={showUpsaleModal}
         onClose={closeUpsaleModal}
@@ -2807,6 +2845,20 @@ export default function ChatScreen() {
         currencySymbol={currencySymbol}
         isDepositing={isDepositing}
         requiredAmount={requiredCredits || undefined}
+      />
+
+      {/* Gasless Deposit Modal (thirdweb - Gas Sponsored!) */}
+      <DepositModal
+        visible={showDepositModal}
+        onClose={closeDepositModal}
+        theme={theme}
+        vaultAddress={VAULT_ADDRESS}
+        userAddress={user?.walletAddress}
+        requiredAmount={requiredCredits || undefined}
+        onRefreshBalance={refreshBilling}
+        onSuccess={(txHash) => {
+          console.log('[DepositModal] Success:', txHash);
+        }}
       />
 
       {/* Wallet Connection Modal - Shows during wallet connection/signing */}

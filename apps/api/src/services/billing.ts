@@ -1,121 +1,22 @@
-import { ethers, Contract, JsonRpcProvider } from "ethers";
+import { ethers } from "ethers";
+import { prisma } from "../prisma";
+import { vaultService } from "./vault";
 
 /**
- * ZeroPrompt Billing Service
- * Interacts with the on-chain billing contract
+ * ZeroPrompt Billing Service - Hybrid Billing
+ *
+ * Balance = Total Deposits (from DB, verified on-chain) - Total Usage (from DB)
+ *
+ * Deposits are verified instantly via txHash when frontend notifies backend.
+ * No polling, no background sync - instant and robust.
  */
 
-// Contract ABI (minimal interface for read/write operations)
-const BILLING_ABI = [
-  // Read functions
-  "function getBalance(address user) view returns (uint256)",
-  "function getAccount(address user) view returns (tuple(uint256 creditsUSD, uint256 totalDeposited, uint256 totalUsedUSD, uint256 depositCount, uint256 lastDepositTime, uint256 lastUsageTime, bool isActive))",
-  "function getNativeTokenPrice() view returns (uint256)",
-  "function calculateCredits(uint256 amountNative) view returns (uint256)",
-  "function calculateDeposit(uint256 amountUSD) view returns (uint256)",
-  "function hasCredits(address user, uint256 amountUSD) view returns (bool)",
-  "function getStats() view returns (uint256 totalUsers, uint256 totalDepositsUSD, uint256 totalUsageUSD, uint256 contractBalance, uint256 currentPrice)",
-  "function getUserDeposits(address user) view returns (uint256[])",
-  "function getUserUsage(address user) view returns (uint256[])",
-  "function getDeposit(uint256 depositId) view returns (tuple(address user, uint256 amountNative, uint256 amountUSD, uint256 priceAtDeposit, uint256 timestamp, bytes32 txId))",
-  "function getUsageRecord(uint256 usageId) view returns (tuple(address user, uint256 amountUSD, string model, uint256 inputTokens, uint256 outputTokens, uint256 timestamp, bytes32 requestId))",
-  "function minDepositUSD() view returns (uint256)",
-  "function freeCreditsUSD() view returns (uint256)",
-
-  // Write functions (for backend operator)
-  "function recordUsage(address user, uint256 amountUSD, string model, uint256 inputTokens, uint256 outputTokens, bytes32 requestId)",
-  "function batchRecordUsage(address[] users, uint256[] amounts, string[] models, bytes32[] requestIds)",
-  "function refundCredits(address user, uint256 amountUSD, string reason)",
-  "function grantFreeCredits(address user, uint256 amountUSD)",
-
-  // Owner/Admin functions
-  "function owner() view returns (address)",
-  "function withdraw(address to, uint256 amount)",
-  "function setOperator(address operator, bool authorized)",
-  "function isOperator(address operator) view returns (bool)",
-
-  // Events
-  "event UserRegistered(address indexed user, uint256 freeCredits, uint256 timestamp)",
-  "event CreditsDeposited(address indexed user, uint256 amountNative, uint256 amountUSD, uint256 priceUsed, uint256 newBalance, uint256 depositId)",
-  "event CreditsUsed(address indexed user, uint256 amountUSD, string model, uint256 inputTokens, uint256 outputTokens, uint256 remainingBalance, bytes32 requestId)",
-  "event CreditsRefunded(address indexed user, uint256 amountUSD, string reason)",
-  "event FundsWithdrawn(address indexed to, uint256 amount)",
-  "event FreeCreditsGranted(address indexed user, uint256 amount)"
-];
-
-// Network configurations
-interface NetworkConfig {
-  name: string;
-  rpcUrl: string;
-  chainId: number;
-  contractAddress: string;
-  nativeCurrency: {
-    name: string;
-    symbol: string;
-    decimals: number;
-  };
-  blockExplorer: string;
-  deploymentBlock?: number;  // Block number when contract was deployed
-}
-
-const NETWORK_CONFIGS: Record<string, NetworkConfig> = {
-  avalanche: {
-    name: "Avalanche C-Chain",
-    rpcUrl: process.env.AVALANCHE_RPC_URL || "https://api.avax.network/ext/bc/C/rpc",
-    chainId: 43114,
-    contractAddress: process.env.ZEROPROMPT_BILLING_AVALANCHE || "",
-    nativeCurrency: { name: "Avalanche", symbol: "AVAX", decimals: 18 },
-    blockExplorer: "https://snowtrace.io",
-    deploymentBlock: 72579057  // Block when contract was deployed
-  },
-  avalancheFuji: {
-    name: "Avalanche Fuji",
-    rpcUrl: process.env.AVALANCHE_FUJI_RPC_URL || "https://api.avax-test.network/ext/bc/C/rpc",
-    chainId: 43113,
-    contractAddress: process.env.ZEROPROMPT_BILLING_AVALANCHEFUJI || "",
-    nativeCurrency: { name: "Avalanche", symbol: "AVAX", decimals: 18 },
-    blockExplorer: "https://testnet.snowtrace.io"
-  },
-  ethereum: {
-    name: "Ethereum",
-    rpcUrl: process.env.ETHEREUM_RPC_URL || "https://eth.llamarpc.com",
-    chainId: 1,
-    contractAddress: process.env.ZEROPROMPT_BILLING_ETHEREUM || "",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    blockExplorer: "https://etherscan.io"
-  },
-  arbitrum: {
-    name: "Arbitrum One",
-    rpcUrl: process.env.ARBITRUM_RPC_URL || "https://arb1.arbitrum.io/rpc",
-    chainId: 42161,
-    contractAddress: process.env.ZEROPROMPT_BILLING_ARBITRUM || "",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    blockExplorer: "https://arbiscan.io"
-  },
-  polygon: {
-    name: "Polygon",
-    rpcUrl: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
-    chainId: 137,
-    contractAddress: process.env.ZEROPROMPT_BILLING_POLYGON || "",
-    nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
-    blockExplorer: "https://polygonscan.com"
-  },
-  base: {
-    name: "Base",
-    rpcUrl: process.env.BASE_RPC_URL || "https://mainnet.base.org",
-    chainId: 8453,
-    contractAddress: process.env.ZEROPROMPT_BILLING_BASE || "",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    blockExplorer: "https://basescan.org"
-  }
-};
-
-// Default network (Avalanche first)
 const DEFAULT_NETWORK = process.env.DEFAULT_BILLING_NETWORK || "avalanche";
+const VAULT_ADDRESS = process.env.VAULT_CONTRACT_ADDRESS || '0x773c9849F15Ac7484232767536Fe5495B5E231e9';
 
 export interface UserAccount {
-  creditsUSD: string;      // USD in 18 decimals
-  totalDeposited: string;  // Native token in wei
+  creditsUSD: string;
+  totalDeposited: string;
   totalUsedUSD: string;
   depositCount: number;
   lastDepositTime: number;
@@ -142,208 +43,230 @@ export interface UsageRecord {
   requestId: string;
 }
 
-export interface WithdrawRecord {
-  to: string;
-  amount: string;
-  blockNumber: number;
-  transactionHash: string;
-  timestamp?: number;
-}
-
-export interface DepositEvent {
-  user: string;
-  amountNative: string;
-  amountUSD: string;
-  priceUsed: string;
-  newBalance: string;
-  depositId: number;
-  blockNumber: number;
-  transactionHash: string;
-  timestamp?: number;
-}
-
 export class BillingService {
-  private providers: Map<string, JsonRpcProvider> = new Map();
-  private contracts: Map<string, Contract> = new Map();
-  private operatorWallet: ethers.Wallet | null = null;
 
-  constructor() {
-    this.initializeProviders();
-  }
+  // ═══════════════════════════════════════════════════════════════════════
+  // DEPOSIT VERIFICATION (Instant - called by frontend after tx confirms)
+  // ═══════════════════════════════════════════════════════════════════════
 
-  private initializeProviders() {
-    const operatorKey = process.env.PRIVATE_KEY;
+  /**
+   * Verify and process a deposit by transaction hash - INSTANT
+   *
+   * Flow:
+   * 1. Frontend sends AVAX to vault contract
+   * 2. Transaction confirms on-chain
+   * 3. Frontend calls POST /billing/verify-deposit with txHash
+   * 4. Backend verifies the tx, saves to DB, returns new balance
+   * 5. Frontend shows updated balance immediately
+   */
+  async verifyAndProcessDeposit(txHash: string, expectedUser?: string): Promise<{
+    success: boolean;
+    newBalanceUSD: string;
+    depositAmountUSD: string;
+    depositAmountAVAX: string;
+    message: string;
+  }> {
+    try {
+      // Idempotent - check if already processed
+      const existing = await prisma.vaultDeposit.findUnique({
+        where: { txHash }
+      });
 
-    for (const [networkId, config] of Object.entries(NETWORK_CONFIGS)) {
-      if (!config.contractAddress) continue;
-
-      try {
-        const provider = new JsonRpcProvider(config.rpcUrl);
-        this.providers.set(networkId, provider);
-
-        // Create read-only contract
-        const contract = new Contract(config.contractAddress, BILLING_ABI, provider);
-        this.contracts.set(networkId, contract);
-
-        // If we have operator key, create writable contract
-        if (operatorKey) {
-          const wallet = new ethers.Wallet(operatorKey, provider);
-          const writableContract = new Contract(config.contractAddress, BILLING_ABI, wallet);
-          this.contracts.set(`${networkId}_write`, writableContract);
-
-          if (!this.operatorWallet) {
-            this.operatorWallet = wallet;
-          }
-        }
-
-        console.log(`[Billing] Initialized ${config.name} (${config.contractAddress})`);
-      } catch (error) {
-        console.error(`[Billing] Failed to initialize ${networkId}:`, error);
+      if (existing) {
+        console.log(`[Billing] Deposit already processed: ${txHash}`);
+        const balance = await this.getBalance(existing.walletAddress);
+        return {
+          success: true,
+          newBalanceUSD: balance,
+          depositAmountUSD: existing.amountUSD.toString(),
+          depositAmountAVAX: ethers.formatEther(existing.amountAVAX),
+          message: "Deposit already processed"
+        };
       }
+
+      // Verify on-chain
+      const depositEvent = await vaultService.verifyDepositByTxHash(txHash);
+
+      if (!depositEvent) {
+        return {
+          success: false,
+          newBalanceUSD: "0",
+          depositAmountUSD: "0",
+          depositAmountAVAX: "0",
+          message: "Transaction not found or not a valid deposit"
+        };
+      }
+
+      // Security: verify user matches if provided
+      if (expectedUser && depositEvent.user.toLowerCase() !== expectedUser.toLowerCase()) {
+        console.warn(`[Billing] User mismatch: expected ${expectedUser}, got ${depositEvent.user}`);
+        return {
+          success: false,
+          newBalanceUSD: "0",
+          depositAmountUSD: "0",
+          depositAmountAVAX: "0",
+          message: "Deposit user does not match expected user"
+        };
+      }
+
+      // Get AVAX price and calculate USD value
+      const avaxPriceUSD = await this.getNativeTokenPrice();
+      const amountUSD = parseFloat(depositEvent.amountFormatted) * avaxPriceUSD;
+
+      console.log(`[Billing] Processing deposit: ${depositEvent.amountFormatted} AVAX = $${amountUSD.toFixed(2)}`);
+
+      // Save to database
+      await prisma.vaultDeposit.create({
+        data: {
+          walletAddress: depositEvent.user,
+          amountAVAX: depositEvent.amount,
+          amountUSD: amountUSD,
+          txHash: depositEvent.txHash,
+          depositId: depositEvent.depositId,
+          blockNumber: depositEvent.blockNumber,
+        },
+      });
+
+      // Get updated balance
+      const newBalance = await this.getBalance(depositEvent.user);
+
+      console.log(`[Billing] ✓ Deposit processed! ${depositEvent.user} new balance: $${newBalance}`);
+
+      return {
+        success: true,
+        newBalanceUSD: newBalance,
+        depositAmountUSD: amountUSD.toFixed(6),
+        depositAmountAVAX: depositEvent.amountFormatted,
+        message: "Deposit verified and processed successfully"
+      };
+
+    } catch (error: any) {
+      console.error('[Billing] verifyAndProcessDeposit failed:', error);
+      return {
+        success: false,
+        newBalanceUSD: "0",
+        depositAmountUSD: "0",
+        depositAmountAVAX: "0",
+        message: error.message || "Failed to verify deposit"
+      };
     }
   }
 
-  getNetworkConfig(networkId: string = DEFAULT_NETWORK): NetworkConfig | null {
-    return NETWORK_CONFIGS[networkId] || null;
-  }
+  // ═══════════════════════════════════════════════════════════════════════
+  // BALANCE & ACCOUNT
+  // ═══════════════════════════════════════════════════════════════════════
 
-  getSupportedNetworks(): { id: string; config: NetworkConfig }[] {
-    return Object.entries(NETWORK_CONFIGS)
-      .filter(([_, config]) => config.contractAddress)
-      .map(([id, config]) => ({ id, config }));
-  }
-
-  private getContract(networkId: string = DEFAULT_NETWORK, writable = false): Contract {
-    const key = writable ? `${networkId}_write` : networkId;
-    const contract = this.contracts.get(key);
-    if (!contract) {
-      throw new Error(`Contract not available for network: ${networkId}`);
+  /**
+   * Get user's current balance in USD
+   * Balance = Total Deposits - Total Usage
+   */
+  async getBalance(userAddress: string, _networkId: string = DEFAULT_NETWORK): Promise<string> {
+    try {
+      const { totalDepositedUSD, totalUsedUSD } = await this.getUserStats(userAddress);
+      const balance = Math.max(0, totalDepositedUSD - totalUsedUSD);
+      return balance.toFixed(6);
+    } catch (error) {
+      console.error('[Billing] getBalance failed:', error);
+      return "0";
     }
-    return contract;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // READ FUNCTIONS
-  // ═══════════════════════════════════════════════════════════════════════
-
-  async getBalance(userAddress: string, networkId: string = DEFAULT_NETWORK): Promise<string> {
-    const contract = this.getContract(networkId);
-    const balance = await contract.getBalance(userAddress);
-    return ethers.formatEther(balance); // Convert from 18 decimals to USD string
-  }
-
-  async getAccount(userAddress: string, networkId: string = DEFAULT_NETWORK): Promise<UserAccount> {
-    const contract = this.getContract(networkId);
-    const account = await contract.getAccount(userAddress);
+  /**
+   * Get detailed account info
+   */
+  async getAccount(userAddress: string, _networkId: string = DEFAULT_NETWORK): Promise<UserAccount> {
+    const stats = await this.getUserStats(userAddress);
 
     return {
-      creditsUSD: ethers.formatEther(account.creditsUSD),
-      totalDeposited: ethers.formatEther(account.totalDeposited),
-      totalUsedUSD: ethers.formatEther(account.totalUsedUSD),
-      depositCount: Number(account.depositCount),
-      lastDepositTime: Number(account.lastDepositTime),
-      lastUsageTime: Number(account.lastUsageTime),
-      isActive: account.isActive
+      creditsUSD: Math.max(0, stats.totalDepositedUSD - stats.totalUsedUSD).toFixed(6),
+      totalDeposited: stats.totalDepositedNative.toFixed(4),
+      totalUsedUSD: stats.totalUsedUSD.toFixed(6),
+      depositCount: stats.depositCount,
+      lastDepositTime: stats.lastDepositTime,
+      lastUsageTime: stats.lastUsageTime,
+      isActive: stats.totalDepositedUSD > 0
     };
   }
 
-  async getNativeTokenPrice(networkId: string = DEFAULT_NETWORK): Promise<number> {
-    const contract = this.getContract(networkId);
-    const price = await contract.getNativeTokenPrice();
-    return Number(price) / 1e8; // Convert from 8 decimals
-  }
-
-  async calculateCredits(amountNative: string, networkId: string = DEFAULT_NETWORK): Promise<string> {
-    const contract = this.getContract(networkId);
-    const amountWei = ethers.parseEther(amountNative);
-    const creditsUSD = await contract.calculateCredits(amountWei);
-    return ethers.formatEther(creditsUSD);
-  }
-
-  async calculateDeposit(amountUSD: string, networkId: string = DEFAULT_NETWORK): Promise<string> {
-    const contract = this.getContract(networkId);
-    const amountUSDWei = ethers.parseEther(amountUSD);
-    const nativeAmount = await contract.calculateDeposit(amountUSDWei);
-    return ethers.formatEther(nativeAmount);
-  }
-
+  /**
+   * Check if user has enough credits
+   */
   async hasCredits(userAddress: string, amountUSD: string, networkId: string = DEFAULT_NETWORK): Promise<boolean> {
-    const contract = this.getContract(networkId);
-    const amountWei = ethers.parseEther(amountUSD);
-    return contract.hasCredits(userAddress, amountWei);
+    const balance = await this.getBalance(userAddress, networkId);
+    return parseFloat(balance) >= parseFloat(amountUSD);
   }
 
-  async getStats(networkId: string = DEFAULT_NETWORK) {
-    const contract = this.getContract(networkId);
-    const stats = await contract.getStats();
+  /**
+   * Aggregate user stats from DB
+   */
+  private async getUserStats(userAddress: string) {
+    const deposits = await prisma.vaultDeposit.aggregate({
+      where: { walletAddress: userAddress.toLowerCase() },
+      _sum: { amountUSD: true },
+      _count: { id: true },
+      _max: { createdAt: true }
+    });
+
+    const usage = await prisma.usage.aggregate({
+      where: { walletAddress: userAddress.toLowerCase() },
+      _sum: { costUSD: true },
+      _max: { createdAt: true }
+    });
+
+    const totalDepositedUSD = Number(deposits._sum.amountUSD || 0);
+    const totalUsedUSD = Number(usage._sum.costUSD || 0);
 
     return {
-      totalUsers: Number(stats.totalUsers),
-      totalDepositsUSD: ethers.formatEther(stats.totalDepositsUSD),
-      totalUsageUSD: ethers.formatEther(stats.totalUsageUSD),
-      contractBalance: ethers.formatEther(stats.contractBalance),
-      currentPrice: Number(stats.currentPrice) / 1e8
+      totalDepositedUSD,
+      totalDepositedNative: 0, // Simplified
+      totalUsedUSD,
+      depositCount: deposits._count.id,
+      lastDepositTime: deposits._max?.createdAt ? Math.floor(deposits._max.createdAt.getTime() / 1000) : 0,
+      lastUsageTime: usage._max?.createdAt ? Math.floor(usage._max.createdAt.getTime() / 1000) : 0
     };
   }
 
-  async getContractConfig(networkId: string = DEFAULT_NETWORK) {
-    const contract = this.getContract(networkId);
-    const [minDeposit, freeCredits] = await Promise.all([
-      contract.minDepositUSD(),
-      contract.freeCreditsUSD()
-    ]);
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRICE & CALCULATIONS
+  // ═══════════════════════════════════════════════════════════════════════
 
-    return {
-      minDepositUSD: ethers.formatEther(minDeposit),
-      freeCreditsUSD: ethers.formatEther(freeCredits)
-    };
+  /**
+   * Get AVAX price in USD
+   */
+  async getNativeTokenPrice(_networkId: string = DEFAULT_NETWORK): Promise<number> {
+    try {
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=avalanche-2&vs_currencies=usd');
+      const data = await response.json();
+      return data['avalanche-2']?.usd || 35;
+    } catch (error) {
+      console.warn('[Billing] Price fetch failed, using fallback $35');
+      return 35;
+    }
   }
 
-  async getUserDeposits(userAddress: string, networkId: string = DEFAULT_NETWORK): Promise<DepositInfo[]> {
-    const contract = this.getContract(networkId);
-    const depositIds = await contract.getUserDeposits(userAddress);
-
-    const deposits: DepositInfo[] = [];
-    for (const id of depositIds) {
-      const deposit = await contract.getDeposit(id);
-      deposits.push({
-        user: deposit.user,
-        amountNative: ethers.formatEther(deposit.amountNative),
-        amountUSD: ethers.formatEther(deposit.amountUSD),
-        priceAtDeposit: (Number(deposit.priceAtDeposit) / 1e8).toString(),
-        timestamp: Number(deposit.timestamp),
-        txId: deposit.txId
-      });
-    }
-
-    return deposits;
+  /**
+   * Calculate USD value for native amount
+   */
+  async calculateCredits(amountNative: string, _networkId: string = DEFAULT_NETWORK): Promise<string> {
+    const price = await this.getNativeTokenPrice();
+    return (parseFloat(amountNative) * price).toString();
   }
 
-  async getUserUsage(userAddress: string, networkId: string = DEFAULT_NETWORK): Promise<UsageRecord[]> {
-    const contract = this.getContract(networkId);
-    const usageIds = await contract.getUserUsage(userAddress);
-
-    const usage: UsageRecord[] = [];
-    for (const id of usageIds) {
-      const record = await contract.getUsageRecord(id);
-      usage.push({
-        user: record.user,
-        amountUSD: ethers.formatEther(record.amountUSD),
-        model: record.model,
-        inputTokens: Number(record.inputTokens),
-        outputTokens: Number(record.outputTokens),
-        timestamp: Number(record.timestamp),
-        requestId: record.requestId
-      });
-    }
-
-    return usage;
+  /**
+   * Calculate native amount for USD value
+   */
+  async calculateDeposit(amountUSD: string, _networkId: string = DEFAULT_NETWORK): Promise<string> {
+    const price = await this.getNativeTokenPrice();
+    return (parseFloat(amountUSD) / price).toString();
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // WRITE FUNCTIONS (Operator only)
+  // USAGE RECORDING
   // ═══════════════════════════════════════════════════════════════════════
 
+  /**
+   * Record API usage in database
+   */
   async recordUsage(
     userAddress: string,
     amountUSD: string,
@@ -351,233 +274,134 @@ export class BillingService {
     inputTokens: number,
     outputTokens: number,
     requestId: string,
-    networkId: string = DEFAULT_NETWORK
-  ): Promise<string> {
-    const contract = this.getContract(networkId, true);
-    const amountWei = ethers.parseEther(amountUSD);
-    const requestIdBytes = ethers.keccak256(ethers.toUtf8Bytes(requestId));
-
-    const tx = await contract.recordUsage(
-      userAddress,
-      amountWei,
-      model,
-      inputTokens,
-      outputTokens,
-      requestIdBytes
-    );
-
-    const receipt = await tx.wait();
-    return receipt.hash;
-  }
-
-  async refundCredits(
-    userAddress: string,
-    amountUSD: string,
-    reason: string,
-    networkId: string = DEFAULT_NETWORK
-  ): Promise<string> {
-    const contract = this.getContract(networkId, true);
-    const amountWei = ethers.parseEther(amountUSD);
-
-    const tx = await contract.refundCredits(userAddress, amountWei, reason);
-    const receipt = await tx.wait();
-    return receipt.hash;
-  }
-
-  async grantFreeCredits(
-    userAddress: string,
-    amountUSD: string,
-    networkId: string = DEFAULT_NETWORK
-  ): Promise<string> {
-    const contract = this.getContract(networkId, true);
-    const amountWei = ethers.parseEther(amountUSD);
-
-    const tx = await contract.grantFreeCredits(userAddress, amountWei);
-    const receipt = await tx.wait();
-    return receipt.hash;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // TRANSACTION PREPARATION (for frontend signing)
-  // ═══════════════════════════════════════════════════════════════════════
-
-  prepareDepositTransaction(amountNative: string, networkId: string = DEFAULT_NETWORK) {
-    const config = this.getNetworkConfig(networkId);
-    if (!config || !config.contractAddress) {
-      throw new Error(`Network ${networkId} not configured`);
+    _networkId: string = DEFAULT_NETWORK
+  ): Promise<void> {
+    try {
+      await prisma.usage.create({
+        data: {
+          walletAddress: userAddress.toLowerCase(),
+          model,
+          inputTokens,
+          outputTokens,
+          costUSD: parseFloat(amountUSD),
+          requestId
+        }
+      });
+      console.log(`[Billing] Usage recorded: ${userAddress} $${amountUSD} (${model})`);
+    } catch (error) {
+      console.error(`[Billing] Failed to record usage:`, error);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // HISTORY
+  // ═══════════════════════════════════════════════════════════════════════
+
+  async getUserDeposits(userAddress: string, _networkId: string = DEFAULT_NETWORK): Promise<DepositInfo[]> {
+    const records = await prisma.vaultDeposit.findMany({
+      where: { walletAddress: userAddress.toLowerCase() },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    return records.map(d => ({
+      user: d.walletAddress,
+      amountNative: ethers.formatEther(d.amountAVAX),
+      amountUSD: d.amountUSD.toString(),
+      priceAtDeposit: "0",
+      timestamp: Math.floor(d.createdAt.getTime() / 1000),
+      txId: d.txHash
+    }));
+  }
+
+  async getUserUsage(userAddress: string, _networkId: string = DEFAULT_NETWORK): Promise<UsageRecord[]> {
+    const records = await prisma.usage.findMany({
+      where: { walletAddress: userAddress.toLowerCase() },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    });
+
+    return records.map(u => ({
+      user: u.walletAddress,
+      amountUSD: u.costUSD.toString(),
+      model: u.model,
+      inputTokens: u.inputTokens,
+      outputTokens: u.outputTokens,
+      timestamp: Math.floor(u.createdAt.getTime() / 1000),
+      requestId: u.requestId
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // TRANSACTION PREP (for frontend)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  prepareDepositTransaction(amountNative: string, _networkId: string = DEFAULT_NETWORK) {
+    if (!VAULT_ADDRESS) throw new Error("Vault address not configured");
 
     const amountWei = ethers.parseEther(amountNative);
-
-    // Encode the deposit() function call - this updates stats properly
     const iface = new ethers.Interface(["function deposit() payable"]);
     const data = iface.encodeFunctionData("deposit", []);
 
     return {
-      to: config.contractAddress,
+      to: VAULT_ADDRESS,
       value: amountWei.toString(),
       data,
-      chainId: config.chainId,
-      networkName: config.name,
-      nativeCurrency: config.nativeCurrency
+      chainId: 43114,
+      networkName: "Avalanche C-Chain",
+      nativeCurrency: { name: "Avalanche", symbol: "AVAX", decimals: 18 }
     };
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // ADMIN FUNCTIONS
+  // CONFIG & STATS
   // ═══════════════════════════════════════════════════════════════════════
 
-  async getOwner(networkId: string = DEFAULT_NETWORK): Promise<string> {
-    const contract = this.getContract(networkId);
-    return contract.owner();
+  getNetworkConfig(_networkId: string = DEFAULT_NETWORK) {
+    return {
+      name: "Avalanche C-Chain",
+      contractAddress: VAULT_ADDRESS || "",
+      nativeCurrency: { name: "Avalanche", symbol: "AVAX", decimals: 18 },
+      blockExplorer: "https://snowtrace.io"
+    };
   }
 
-  async isOperator(address: string, networkId: string = DEFAULT_NETWORK): Promise<boolean> {
-    const contract = this.getContract(networkId);
-    return contract.isOperator(address);
+  getSupportedNetworks() {
+    return [{
+      id: "avalanche",
+      config: this.getNetworkConfig("avalanche")
+    }];
   }
 
-  async getContractBalance(networkId: string = DEFAULT_NETWORK): Promise<string> {
-    const config = this.getNetworkConfig(networkId);
-    if (!config) throw new Error(`Network ${networkId} not configured`);
-
-    const provider = this.providers.get(networkId);
-    if (!provider) throw new Error(`Provider not available for ${networkId}`);
-
-    const balance = await provider.getBalance(config.contractAddress);
-    return ethers.formatEther(balance);
-  }
-
-  prepareWithdrawTransaction(toAddress: string, amount: string, networkId: string = DEFAULT_NETWORK) {
-    const config = this.getNetworkConfig(networkId);
-    if (!config || !config.contractAddress) {
-      throw new Error(`Network ${networkId} not configured`);
-    }
-
-    const amountWei = ethers.parseEther(amount);
-    const iface = new ethers.Interface(BILLING_ABI);
-    const data = iface.encodeFunctionData("withdraw", [toAddress, amountWei]);
+  async getStats(_networkId: string = DEFAULT_NETWORK) {
+    const userCount = await prisma.user.count();
+    const depositSum = await prisma.vaultDeposit.aggregate({ _sum: { amountUSD: true } });
+    const usageSum = await prisma.usage.aggregate({ _sum: { costUSD: true } });
 
     return {
-      to: config.contractAddress,
-      value: "0",
-      data,
-      chainId: config.chainId,
-      networkName: config.name,
-      nativeCurrency: config.nativeCurrency
+      totalUsers: userCount,
+      totalDepositsUSD: depositSum._sum.amountUSD?.toString() || "0",
+      totalUsageUSD: usageSum._sum.costUSD?.toString() || "0",
+      contractBalance: "0",
+      currentPrice: await this.getNativeTokenPrice()
     };
   }
 
-  async getWithdrawHistory(networkId: string = DEFAULT_NETWORK): Promise<WithdrawRecord[]> {
-    const config = this.getNetworkConfig(networkId);
-    if (!config || !config.contractAddress) {
-      throw new Error(`Network ${networkId} not configured`);
-    }
-
-    const provider = this.providers.get(networkId);
-    if (!provider) {
-      throw new Error(`Provider not available for ${networkId}`);
-    }
-
-    const contract = this.getContract(networkId);
-
-    try {
-      // Query FundsWithdrawn events with pagination (RPC limit is 2048 blocks)
-      const filter = contract.filters.FundsWithdrawn();
-      const fromBlock = config.deploymentBlock || 0;
-      const latestBlock = await provider.getBlockNumber();
-      const CHUNK_SIZE = 2000;
-
-      const allEvents: any[] = [];
-
-      for (let start = fromBlock; start <= latestBlock; start += CHUNK_SIZE) {
-        const end = Math.min(start + CHUNK_SIZE - 1, latestBlock);
-        const events = await contract.queryFilter(filter, start, end);
-        allEvents.push(...events);
-      }
-
-      const withdrawals: WithdrawRecord[] = [];
-
-      for (const event of allEvents) {
-        const args = (event as any).args;
-        const block = await event.getBlock();
-
-        withdrawals.push({
-          to: args.to,
-          amount: ethers.formatEther(args.amount),
-          blockNumber: event.blockNumber,
-          transactionHash: event.transactionHash,
-          timestamp: block?.timestamp
-        });
-      }
-
-      // Sort by block number descending (newest first)
-      withdrawals.sort((a, b) => b.blockNumber - a.blockNumber);
-
-      return withdrawals;
-    } catch (error) {
-      console.error(`[Billing] Failed to get withdraw history:`, error);
-      return [];
-    }
+  async getContractConfig(_networkId: string = DEFAULT_NETWORK) {
+    return {
+      minDepositUSD: "1.0",
+      freeCreditsUSD: "0.5"
+    };
   }
 
-  async getDepositHistory(networkId: string = DEFAULT_NETWORK): Promise<DepositEvent[]> {
-    const config = this.getNetworkConfig(networkId);
-    if (!config || !config.contractAddress) {
-      throw new Error(`Network ${networkId} not configured`);
-    }
-
-    const provider = this.providers.get(networkId);
-    if (!provider) {
-      throw new Error(`Provider not available for ${networkId}`);
-    }
-
-    const contract = this.getContract(networkId);
-
-    try {
-      // Query CreditsDeposited events with pagination (RPC limit is 2048 blocks)
-      const filter = contract.filters.CreditsDeposited();
-      const fromBlock = config.deploymentBlock || 0;
-      const latestBlock = await provider.getBlockNumber();
-      const CHUNK_SIZE = 2000;
-
-      const allEvents: any[] = [];
-
-      for (let start = fromBlock; start <= latestBlock; start += CHUNK_SIZE) {
-        const end = Math.min(start + CHUNK_SIZE - 1, latestBlock);
-        const events = await contract.queryFilter(filter, start, end);
-        allEvents.push(...events);
-      }
-
-      const deposits: DepositEvent[] = [];
-
-      for (const event of allEvents) {
-        const args = (event as any).args;
-        const block = await event.getBlock();
-
-        deposits.push({
-          user: args.user,
-          amountNative: ethers.formatEther(args.amountNative),
-          amountUSD: ethers.formatEther(args.amountUSD),
-          priceUsed: (Number(args.priceUsed) / 1e8).toString(),
-          newBalance: ethers.formatEther(args.newBalance),
-          depositId: Number(args.depositId),
-          blockNumber: event.blockNumber,
-          transactionHash: event.transactionHash,
-          timestamp: block?.timestamp
-        });
-      }
-
-      // Sort by block number descending (newest first)
-      deposits.sort((a, b) => b.blockNumber - a.blockNumber);
-
-      return deposits;
-    } catch (error) {
-      console.error(`[Billing] Failed to get deposit history:`, error);
-      return [];
-    }
-  }
+  // Legacy stubs
+  async refundCredits(_user: string, _amount: string, _reason: string) { return "0x0"; }
+  async grantFreeCredits(_user: string, _amount: string) { return "0x0"; }
+  async getOwner(_networkId: string) { return "0x0000000000000000000000000000000000000000"; }
+  async isOperator(_address: string) { return false; }
+  async getContractBalance(_networkId: string) { return "0"; }
+  prepareWithdrawTransaction(_to: string, _amount: string, _net: string) { return {}; }
+  async getWithdrawHistory(_net: string) { return []; }
+  async getDepositHistory(_net: string) { return []; }
 }
 
-// Singleton instance
 export const billingService = new BillingService();

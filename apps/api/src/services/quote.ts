@@ -10,16 +10,27 @@
  */
 
 import { encode } from 'gpt-tokenizer';
+import { ethers } from 'ethers';
 
 // OpenRouter API for real-time pricing
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1';
 
-// Cache AVAX price for 30 seconds to avoid rate limiting
+// Avalanche RPC for Chainlink price feeds
+const AVALANCHE_RPC = 'https://api.avax.network/ext/bc/C/rpc';
+
+// Chainlink AVAX/USD Price Feed on Avalanche C-Chain
+const CHAINLINK_AVAX_USD = '0x0A77230d17318075983913bC2145DB16C7366156';
+const CHAINLINK_ABI = [
+  'function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)',
+  'function decimals() view returns (uint8)'
+];
+
+// Cache AVAX price for 60 seconds
 let avaxPriceCache: { price: number; timestamp: number } | null = null;
-const CACHE_TTL = 30000; // 30 seconds
+const CACHE_TTL = 60000; // 60 seconds
 
 // ============================================================================
-// AVAX PRICE - Real-time from CoinGecko
+// AVAX PRICE - Chainlink Oracle (Primary) + CoinGecko (Fallback)
 // ============================================================================
 export async function getAvaxPrice(): Promise<number> {
   // Check cache first
@@ -27,8 +38,27 @@ export async function getAvaxPrice(): Promise<number> {
     return avaxPriceCache.price;
   }
 
+  // Try Chainlink first (most reliable)
   try {
-    // Primary: CoinGecko simple price API
+    const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
+    const priceFeed = new ethers.Contract(CHAINLINK_AVAX_USD, CHAINLINK_ABI, provider);
+
+    const [, answer] = await priceFeed.latestRoundData();
+    const decimals = await priceFeed.decimals();
+
+    const price = Number(answer) / Math.pow(10, Number(decimals));
+
+    if (price > 0) {
+      console.log(`[Quote] AVAX price from Chainlink: $${price.toFixed(2)}`);
+      avaxPriceCache = { price, timestamp: Date.now() };
+      return price;
+    }
+  } catch (error) {
+    console.warn('Chainlink price fetch failed, trying CoinGecko...', error);
+  }
+
+  // Fallback: CoinGecko
+  try {
     const response = await fetch(
       'https://api.coingecko.com/api/v3/simple/price?ids=avalanche-2&vs_currencies=usd',
       { headers: { 'Accept': 'application/json' } }
@@ -38,36 +68,16 @@ export async function getAvaxPrice(): Promise<number> {
       const data = await response.json();
       if (data['avalanche-2']?.usd) {
         const price = data['avalanche-2'].usd;
+        console.log(`[Quote] AVAX price from CoinGecko: $${price.toFixed(2)}`);
         avaxPriceCache = { price, timestamp: Date.now() };
         return price;
       }
     }
-
-    // Fallback: CoinGecko coin details API
-    const fallbackResponse = await fetch(
-      'https://api.coingecko.com/api/v3/coins/avalanche-2?localization=false&tickers=false&community_data=false&developer_data=false',
-      { headers: { 'Accept': 'application/json' } }
-    );
-
-    if (fallbackResponse.ok) {
-      const data = await fallbackResponse.json();
-      if (data.market_data?.current_price?.usd) {
-        const price = data.market_data.current_price.usd;
-        avaxPriceCache = { price, timestamp: Date.now() };
-        return price;
-      }
-    }
-
-    throw new Error('Failed to fetch AVAX price from all sources');
   } catch (error) {
-    console.error('AVAX price fetch error:', error);
-    // If we have stale cache, use it as last resort
-    if (avaxPriceCache) {
-      console.warn('Using stale AVAX price cache');
-      return avaxPriceCache.price;
-    }
-    throw error;
+    console.warn('CoinGecko price fetch failed:', error);
   }
+
+  throw new Error('Failed to fetch AVAX price from Chainlink and CoinGecko');
 }
 
 // ============================================================================

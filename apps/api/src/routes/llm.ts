@@ -221,6 +221,78 @@ async function recordUsageInternal(
 
 llmRouter.use(checkAuth);
 
+// --- IMAGE GALLERY ENDPOINT ---
+llmRouter.get("/images", async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "unauthorized" });
+
+    try {
+        // Get all messages with images for this user
+        const messagesWithImages = await prisma.message.findMany({
+            where: {
+                conversation: { userId: user.id },
+                OR: [
+                    { attachmentUrl: { not: null }, attachmentType: 'image' },
+                    { metadata: { not: Prisma.DbNull } }
+                ]
+            },
+            include: {
+                conversation: {
+                    select: { title: true }
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 200 // Fetch more to filter for images
+        });
+
+        // Extract all images from messages
+        const images: any[] = [];
+
+        for (const msg of messagesWithImages) {
+            const metadata = msg.metadata as any;
+            const convTitle = msg.conversation?.title
+                ? encryptionService.decrypt(msg.conversation.title)
+                : 'Untitled';
+
+            // Image from attachmentUrl (tool-generated)
+            if (msg.attachmentUrl && msg.attachmentType === 'image') {
+                images.push({
+                    id: `${msg.id}-attachment`,
+                    url: msg.attachmentUrl,
+                    model: msg.modelUsed || 'tool-image',
+                    prompt: encryptionService.decrypt(msg.content).replace(/!\[.*?\]\(.*?\)/g, '').trim().substring(0, 200),
+                    conversationId: msg.conversationId,
+                    conversationTitle: convTitle,
+                    createdAt: msg.createdAt,
+                    source: 'tool'
+                });
+            }
+
+            // Images from metadata.generatedImages (AI model generated)
+            if (metadata?.generatedImages && Array.isArray(metadata.generatedImages)) {
+                for (let i = 0; i < metadata.generatedImages.length; i++) {
+                    images.push({
+                        id: `${msg.id}-gen-${i}`,
+                        url: metadata.generatedImages[i],
+                        model: msg.modelUsed || 'unknown',
+                        prompt: encryptionService.decrypt(msg.content).substring(0, 200),
+                        conversationId: msg.conversationId,
+                        conversationTitle: convTitle,
+                        createdAt: msg.createdAt,
+                        source: 'ai-model'
+                    });
+                }
+            }
+        }
+
+        // Limit to 100 images after filtering
+        res.json({ images: images.slice(0, 100), total: images.length });
+    } catch (err) {
+        console.error("Failed to fetch images:", err);
+        res.status(500).json({ error: "failed_to_fetch_images" });
+    }
+});
+
 // --- HISTORY ENDPOINTS ---
 llmRouter.get("/history", async (req, res) => {
     const user = (req as any).user;

@@ -234,6 +234,60 @@ billingRouter.get("/usage/:address/:networkId?", async (req: Request, res: Respo
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// TRANSACTION VERIFICATION - INSTANT BALANCE UPDATE
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /billing/verify-deposit
+ * Verify a deposit transaction and update balance IMMEDIATELY
+ * This should be called by frontend right after tx confirmation.
+ *
+ * Body: { txHash: string, userAddress?: string }
+ *
+ * This is the ROBUST way to update balance - no polling needed!
+ */
+billingRouter.post("/verify-deposit", async (req: Request, res: Response) => {
+  try {
+    const { txHash, userAddress } = req.body;
+    const user = (req as any).user;
+
+    if (!txHash) {
+      return res.status(400).json({ error: "txHash_required" });
+    }
+
+    // Use the authenticated user's wallet, or fallback to provided userAddress
+    const expectedUser = user?.walletAddress || userAddress;
+
+    console.log(`[Billing] Verify deposit request: ${txHash} for ${expectedUser || 'any user'}`);
+
+    const result = await billingService.verifyAndProcessDeposit(txHash, expectedUser);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        newBalanceUSD: result.newBalanceUSD,
+        depositAmountUSD: result.depositAmountUSD,
+        depositAmountAVAX: result.depositAmountAVAX,
+        message: result.message,
+        txHash
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.message,
+        txHash
+      });
+    }
+  } catch (error: any) {
+    console.error("[Billing] Verify deposit error:", error);
+    res.status(500).json({
+      error: "failed_to_verify_deposit",
+      message: error.message
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // TRANSACTION PREPARATION (For frontend signing)
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -402,13 +456,13 @@ billingRouter.post("/refund", async (req: Request, res: Response) => {
       return res.status(403).json({ error: "forbidden" });
     }
 
-    const { userAddress, amountUSD, reason, networkId } = req.body;
+    const { userAddress, amountUSD, reason } = req.body;
 
     if (!userAddress || !amountUSD || !reason) {
       return res.status(400).json({ error: "missing_required_fields" });
     }
 
-    const txHash = await billingService.refundCredits(userAddress, amountUSD, reason, networkId);
+    const txHash = await billingService.refundCredits(userAddress, amountUSD, reason);
 
     res.json({
       success: true,
@@ -435,13 +489,13 @@ billingRouter.post("/grant-credits", async (req: Request, res: Response) => {
       return res.status(403).json({ error: "forbidden" });
     }
 
-    const { userAddress, amountUSD, networkId } = req.body;
+    const { userAddress, amountUSD } = req.body;
 
     if (!userAddress || !amountUSD) {
       return res.status(400).json({ error: "missing_required_fields" });
     }
 
-    const txHash = await billingService.grantFreeCredits(userAddress, amountUSD, networkId);
+    const txHash = await billingService.grantFreeCredits(userAddress, amountUSD);
 
     res.json({
       success: true,

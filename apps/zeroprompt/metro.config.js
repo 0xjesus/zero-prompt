@@ -31,6 +31,21 @@ config.resolver.extraNodeModules = {
   "@noble/curves": path.resolve(projectRoot, "node_modules/@noble/curves"),
   "expo-linear-gradient": path.resolve(workspaceRoot, "node_modules/expo-linear-gradient"),
   "@phosphor-icons/webcomponents": path.resolve(workspaceRoot, "node_modules/@phosphor-icons/webcomponents"),
+  // Expo packages - resolve from root node_modules
+  "expo": path.resolve(workspaceRoot, "node_modules/expo"),
+  "expo-router": path.resolve(workspaceRoot, "node_modules/expo-router"),
+  "expo-linking": path.resolve(workspaceRoot, "node_modules/expo-linking"),
+  "expo-constants": path.resolve(workspaceRoot, "node_modules/expo-constants"),
+  "expo-status-bar": path.resolve(workspaceRoot, "node_modules/expo-status-bar"),
+  "expo-splash-screen": path.resolve(workspaceRoot, "node_modules/expo-splash-screen"),
+  "expo-modules-core": path.resolve(workspaceRoot, "node_modules/expo-modules-core"),
+  // React packages
+  "react": path.resolve(workspaceRoot, "node_modules/react"),
+  "react-dom": path.resolve(workspaceRoot, "node_modules/react-dom"),
+  "react-native": path.resolve(workspaceRoot, "node_modules/react-native"),
+  "react-native-web": path.resolve(workspaceRoot, "node_modules/react-native-web"),
+  // Thirdweb
+  "thirdweb": path.resolve(workspaceRoot, "node_modules/thirdweb"),
   // Force problematic SDKs to resolve to our empty shim
   "@coinbase/wallet-sdk": path.resolve(projectRoot, "shims/empty-module.js"),
   "@metamask/sdk": path.resolve(projectRoot, "shims/empty-module.js"),
@@ -66,6 +81,15 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       type: "sourceFile",
     };
   }
+
+  // Handle expo-router entry point - resolve from root node_modules
+  if (moduleName === "expo-router/entry" || moduleName.endsWith("expo-router/entry")) {
+    return {
+      filePath: path.resolve(workspaceRoot, "node_modules/expo-router/entry.js"),
+      type: "sourceFile",
+    };
+  }
+
   // Fall back to default resolution
   return context.resolveRequest(context, moduleName, platform);
 };

@@ -79,13 +79,45 @@ model Message {
   role           String       // "user" | "assistant"
   content        String       @db.Text
   modelUsed      String?      // To track which model generated this
-  
+
   attachmentUrl  String?      @map("attachment_url")
   attachmentType String?      @map("attachment_type") // "image", "file", etc.
-  
+
   metadata       Json?        // Stores { reasoning, sources, usage, etc. }
 
   createdAt      DateTime     @default(now())
 
   @@index([conversationId])
+}
+
+model VaultDeposit {
+  id            Int      @id @default(autoincrement())
+  walletAddress String   @map("wallet_address")
+  amountAVAX    String   @map("amount_avax") // in wei (string to preserve precision)
+  amountUSD     Decimal  @map("amount_usd") @db.Decimal(18, 2) // Calculated USD value at deposit time
+  txHash        String   @unique @map("tx_hash")
+  depositId     Int      @map("deposit_id") // From smart contract event
+  blockNumber   Int      @map("block_number")
+
+  createdAt     DateTime @default(now())
+
+  @@index([walletAddress])
+  @@index([createdAt])
+  @@map("vault_deposits")
+}
+
+model Usage {
+  id            Int      @id @default(autoincrement())
+  walletAddress String   @map("wallet_address")
+  model         String
+  inputTokens   Int      @map("input_tokens")
+  outputTokens  Int      @map("output_tokens")
+  costUSD       Decimal  @map("cost_usd") @db.Decimal(18, 8)
+  requestId     String   @unique @map("request_id")
+  
+  createdAt     DateTime @default(now())
+
+  @@index([walletAddress])
+  @@index([createdAt])
+  @@map("usage_records")
 }
