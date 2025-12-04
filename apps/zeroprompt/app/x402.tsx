@@ -1618,32 +1618,6 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
               </Text>
             </View>
 
-            <View style={styles.specItem}>
-              <Text style={styles.specItemTitle}>Supported Chains (USDC via thirdweb x402)</Text>
-              <Text style={[styles.specItemDesc, { marginBottom: 12, color: '#8B5CF6' }]}>
-                ⚡ Gas fees are sponsored - users only pay in USDC
-              </Text>
-              <View style={styles.chainBadges}>
-                <View style={[styles.chainBadge, { backgroundColor: '#E8414220', borderWidth: 1, borderColor: '#E8414240' }]}>
-                  <Text style={[styles.chainBadgeText, { color: '#E84142' }]}>Avalanche</Text>
-                </View>
-                <View style={[styles.chainBadge, { backgroundColor: '#0052FF20', borderWidth: 1, borderColor: '#0052FF40' }]}>
-                  <Text style={[styles.chainBadgeText, { color: '#0052FF' }]}>Base</Text>
-                </View>
-                <View style={[styles.chainBadge, { backgroundColor: '#28A0F020', borderWidth: 1, borderColor: '#28A0F040' }]}>
-                  <Text style={[styles.chainBadgeText, { color: '#28A0F0' }]}>Arbitrum</Text>
-                </View>
-                <View style={[styles.chainBadge, { backgroundColor: '#8247E520', borderWidth: 1, borderColor: '#8247E540' }]}>
-                  <Text style={[styles.chainBadgeText, { color: '#8247E5' }]}>Polygon</Text>
-                </View>
-                <View style={[styles.chainBadge, { backgroundColor: '#62698820', borderWidth: 1, borderColor: '#62698840' }]}>
-                  <Text style={[styles.chainBadgeText, { color: '#888' }]}>Ethereum</Text>
-                </View>
-                <View style={[styles.chainBadge, { backgroundColor: '#FF042020', borderWidth: 1, borderColor: '#FF042040' }]}>
-                  <Text style={[styles.chainBadgeText, { color: '#FF0420' }]}>Optimism</Text>
-                </View>
-              </View>
-            </View>
           </View>
         </View>
 
