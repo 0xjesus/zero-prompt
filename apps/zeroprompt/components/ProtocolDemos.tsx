@@ -705,62 +705,84 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
       }
 
       const challenge = await initialRes.json();
-      const priceUSD = parseFloat(challenge.accepts[0].price);
+      const usdcOption = challenge.accepts.find((a: any) => a.scheme === 'x402-eip3009');
+      const avaxOption = challenge.accepts.find((a: any) => a.scheme === 'x402-native');
 
-      // Sign EIP-3009 authorization
-      const usdcAmount = BigInt(Math.ceil(priceUSD * 1_000_000));
-      const nonceBytes = new Uint8Array(32);
-      crypto.getRandomValues(nonceBytes);
-      const nonce = '0x' + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      if (avaxOption) {
+        setAvaxPriceDisplay(avaxOption.price);
+      }
 
-      const now = Math.floor(Date.now() / 1000);
-      const validAfter = BigInt(now - 60);
-      const validBefore = BigInt(now + 3600);
+      let paymentPayload: any;
 
-      const signature = await signTypedDataAsync({
-        domain: {
-          name: 'USD Coin',
-          version: '2',
+      if (paymentMethod === 'AVAX' && avaxOption) {
+        const avaxAmount = parseEther(avaxOption.price);
+        const txHash = await sendTransactionAsync({
+          to: MERCHANT_ADDRESS,
+          value: avaxAmount,
+        });
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-native',
+          network: 'avalanche',
           chainId: AVALANCHE_CONFIG.chainId,
-          verifyingContract: AVALANCHE_CONFIG.usdc
-        },
-        types: {
-          TransferWithAuthorization: [
-            { name: 'from', type: 'address' },
-            { name: 'to', type: 'address' },
-            { name: 'value', type: 'uint256' },
-            { name: 'validAfter', type: 'uint256' },
-            { name: 'validBefore', type: 'uint256' },
-            { name: 'nonce', type: 'bytes32' }
-          ]
-        } as const,
-        primaryType: 'TransferWithAuthorization',
-        message: {
-          from: address as `0x${string}`,
-          to: MERCHANT_ADDRESS,
-          value: usdcAmount,
-          validAfter,
-          validBefore,
-          nonce: nonce as `0x${string}`
-        }
-      });
+          payload: { txHash, from: address }
+        };
+      } else {
+        const priceUSD = parseFloat(usdcOption.price);
+        const usdcAmount = BigInt(Math.ceil(priceUSD * 1_000_000));
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+        const nonce = '0x' + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const paymentPayload = {
-        x402Version: 2,
-        scheme: 'x402-eip3009',
-        network: 'avalanche',
-        chainId: AVALANCHE_CONFIG.chainId,
-        token: AVALANCHE_CONFIG.usdc,
-        payload: {
-          from: address,
-          to: MERCHANT_ADDRESS,
-          value: usdcAmount.toString(),
-          validAfter: validAfter.toString(),
-          validBefore: validBefore.toString(),
-          nonce,
-          signature
-        }
-      };
+        const now = Math.floor(Date.now() / 1000);
+        const validAfter = BigInt(now - 60);
+        const validBefore = BigInt(now + 3600);
+
+        const signature = await signTypedDataAsync({
+          domain: {
+            name: 'USD Coin',
+            version: '2',
+            chainId: AVALANCHE_CONFIG.chainId,
+            verifyingContract: AVALANCHE_CONFIG.usdc
+          },
+          types: {
+            TransferWithAuthorization: [
+              { name: 'from', type: 'address' },
+              { name: 'to', type: 'address' },
+              { name: 'value', type: 'uint256' },
+              { name: 'validAfter', type: 'uint256' },
+              { name: 'validBefore', type: 'uint256' },
+              { name: 'nonce', type: 'bytes32' }
+            ]
+          } as const,
+          primaryType: 'TransferWithAuthorization',
+          message: {
+            from: address as `0x${string}`,
+            to: MERCHANT_ADDRESS,
+            value: usdcAmount,
+            validAfter,
+            validBefore,
+            nonce: nonce as `0x${string}`
+          }
+        });
+
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-eip3009',
+          network: 'avalanche',
+          chainId: AVALANCHE_CONFIG.chainId,
+          token: AVALANCHE_CONFIG.usdc,
+          payload: {
+            from: address,
+            to: MERCHANT_ADDRESS,
+            value: usdcAmount.toString(),
+            validAfter: validAfter.toString(),
+            validBefore: validBefore.toString(),
+            nonce,
+            signature
+          }
+        };
+      }
 
       const response = await fetch(`${API_URL}/agent/consensus`, {
         method: 'POST',
@@ -772,7 +794,8 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
       });
 
       if (!response.ok) {
-        throw new Error('Consensus failed');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Consensus failed');
       }
 
       const data = await response.json();
@@ -878,10 +901,21 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
         onChangeText={setPrompt}
       />
 
+      {/* Payment Method Selector */}
+      <PaymentMethodSelector
+        selected={paymentMethod}
+        onSelect={setPaymentMethod}
+        avaxPrice={avaxPriceDisplay}
+      />
+
       {/* Price Info */}
       <View style={styles.priceBox}>
-        <Text style={styles.priceLabel}>Cost: $0.08 USDC</Text>
-        <Text style={styles.priceHint}>{selectedModels.length} models + analysis</Text>
+        <Text style={styles.priceLabel}>
+          Cost: {paymentMethod === 'USDC' ? '$0.08 USDC' : `~${avaxPriceDisplay || '0.006'} AVAX`}
+        </Text>
+        <Text style={styles.priceHint}>
+          {selectedModels.length} models + analysis {paymentMethod === 'USDC' ? '(gas free)' : ''}
+        </Text>
       </View>
 
       {/* Execute Button */}
@@ -986,6 +1020,7 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
 // ============================================================================
 const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: DemoProps) => {
   const { signTypedDataAsync } = useSignTypedData();
+  const { sendTransactionAsync } = useSendTransaction();
   const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_BREAKPOINT;
   const [prompt, setPrompt] = useState('A futuristic city with flying cars and neon lights, cyberpunk style');
@@ -994,6 +1029,8 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
+  const [avaxPriceDisplay, setAvaxPriceDisplay] = useState<string | undefined>();
 
   // Filter to only image generation models
   const imageModels = models.filter(m => {
@@ -1054,62 +1091,84 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
       }
 
       const challenge = await initialRes.json();
-      const priceUSD = parseFloat(challenge.accepts[0].price);
+      const usdcOption = challenge.accepts.find((a: any) => a.scheme === 'x402-eip3009');
+      const avaxOption = challenge.accepts.find((a: any) => a.scheme === 'x402-native');
 
-      // Sign EIP-3009 authorization
-      const usdcAmount = BigInt(Math.ceil(priceUSD * 1_000_000));
-      const nonceBytes = new Uint8Array(32);
-      crypto.getRandomValues(nonceBytes);
-      const nonce = '0x' + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      if (avaxOption) {
+        setAvaxPriceDisplay(avaxOption.price);
+      }
 
-      const now = Math.floor(Date.now() / 1000);
-      const validAfter = BigInt(now - 60);
-      const validBefore = BigInt(now + 3600);
+      let paymentPayload: any;
 
-      const signature = await signTypedDataAsync({
-        domain: {
-          name: 'USD Coin',
-          version: '2',
+      if (paymentMethod === 'AVAX' && avaxOption) {
+        const avaxAmount = parseEther(avaxOption.price);
+        const txHash = await sendTransactionAsync({
+          to: MERCHANT_ADDRESS,
+          value: avaxAmount,
+        });
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-native',
+          network: 'avalanche',
           chainId: AVALANCHE_CONFIG.chainId,
-          verifyingContract: AVALANCHE_CONFIG.usdc
-        },
-        types: {
-          TransferWithAuthorization: [
-            { name: 'from', type: 'address' },
-            { name: 'to', type: 'address' },
-            { name: 'value', type: 'uint256' },
-            { name: 'validAfter', type: 'uint256' },
-            { name: 'validBefore', type: 'uint256' },
-            { name: 'nonce', type: 'bytes32' }
-          ]
-        } as const,
-        primaryType: 'TransferWithAuthorization',
-        message: {
-          from: address as `0x${string}`,
-          to: MERCHANT_ADDRESS,
-          value: usdcAmount,
-          validAfter,
-          validBefore,
-          nonce: nonce as `0x${string}`
-        }
-      });
+          payload: { txHash, from: address }
+        };
+      } else {
+        const priceUSD = parseFloat(usdcOption.price);
+        const usdcAmount = BigInt(Math.ceil(priceUSD * 1_000_000));
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+        const nonce = '0x' + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
 
-      const paymentPayload = {
-        x402Version: 2,
-        scheme: 'x402-eip3009',
-        network: 'avalanche',
-        chainId: AVALANCHE_CONFIG.chainId,
-        token: AVALANCHE_CONFIG.usdc,
-        payload: {
-          from: address,
-          to: MERCHANT_ADDRESS,
-          value: usdcAmount.toString(),
-          validAfter: validAfter.toString(),
-          validBefore: validBefore.toString(),
-          nonce,
-          signature
-        }
-      };
+        const now = Math.floor(Date.now() / 1000);
+        const validAfter = BigInt(now - 60);
+        const validBefore = BigInt(now + 3600);
+
+        const signature = await signTypedDataAsync({
+          domain: {
+            name: 'USD Coin',
+            version: '2',
+            chainId: AVALANCHE_CONFIG.chainId,
+            verifyingContract: AVALANCHE_CONFIG.usdc
+          },
+          types: {
+            TransferWithAuthorization: [
+              { name: 'from', type: 'address' },
+              { name: 'to', type: 'address' },
+              { name: 'value', type: 'uint256' },
+              { name: 'validAfter', type: 'uint256' },
+              { name: 'validBefore', type: 'uint256' },
+              { name: 'nonce', type: 'bytes32' }
+            ]
+          } as const,
+          primaryType: 'TransferWithAuthorization',
+          message: {
+            from: address as `0x${string}`,
+            to: MERCHANT_ADDRESS,
+            value: usdcAmount,
+            validAfter,
+            validBefore,
+            nonce: nonce as `0x${string}`
+          }
+        });
+
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-eip3009',
+          network: 'avalanche',
+          chainId: AVALANCHE_CONFIG.chainId,
+          token: AVALANCHE_CONFIG.usdc,
+          payload: {
+            from: address,
+            to: MERCHANT_ADDRESS,
+            value: usdcAmount.toString(),
+            validAfter: validAfter.toString(),
+            validBefore: validBefore.toString(),
+            nonce,
+            signature
+          }
+        };
+      }
 
       const response = await fetch(`${API_URL}/agent/image-gallery`, {
         method: 'POST',
@@ -1121,7 +1180,8 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
       });
 
       if (!response.ok) {
-        throw new Error('Gallery failed');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gallery failed');
       }
 
       const data = await response.json();
@@ -1195,10 +1255,21 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
         onChangeText={setPrompt}
       />
 
+      {/* Payment Method Selector */}
+      <PaymentMethodSelector
+        selected={paymentMethod}
+        onSelect={setPaymentMethod}
+        avaxPrice={avaxPriceDisplay}
+      />
+
       {/* Price Info */}
       <View style={styles.priceBox}>
-        <Text style={styles.priceLabel}>Cost: $0.15 USDC</Text>
-        <Text style={styles.priceHint}>{selectedModels.length} image{selectedModels.length !== 1 ? 's' : ''}</Text>
+        <Text style={styles.priceLabel}>
+          Cost: {paymentMethod === 'USDC' ? '$0.15 USDC' : `~${avaxPriceDisplay || '0.012'} AVAX`}
+        </Text>
+        <Text style={styles.priceHint}>
+          {selectedModels.length} image{selectedModels.length !== 1 ? 's' : ''} {paymentMethod === 'USDC' ? '(gas free)' : ''}
+        </Text>
       </View>
 
       {/* Execute Button */}
