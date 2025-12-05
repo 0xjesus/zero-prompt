@@ -18,7 +18,7 @@ import {
 } from 'lucide-react-native';
 import ModelSelectorModal from '../components/ModelSelectorModal';
 import { API_URL } from '../config/api';
-import { VAULT_ADDRESS, MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/thirdweb';
+import { VAULT_ADDRESS, MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/constants';
 import { useBilling } from '../context/BillingContext';
 import DepositModal from '../components/DepositModal';
 import ProtocolDemos from '../components/ProtocolDemos';
@@ -581,7 +581,7 @@ export default function ProtocolPage() {
       addLog('══════════════════════════════════════', 'success');
       addLog('✓ SUCCESS! x402 FLOW COMPLETE', 'success');
       addLog('══════════════════════════════════════', 'success');
-      addLog(`✓ Payment settled via thirdweb (gas sponsored)`, 'success');
+      addLog(`✓ Payment settled on-chain (gas sponsored)`, 'success');
       addLog(`✓ AI response received`, 'success');
 
       // Handle text responses
@@ -654,7 +654,7 @@ export default function ProtocolPage() {
   const curlCode = useMemo(() => `# ══════════════════════════════════════════════════════════════
 # x402 Protocol - ZeroPrompt AI API
 # Production Endpoint: ${PROD_API_URL}
-# Payment: USDC (Gas Sponsored via thirdweb!)
+# Payment: USDC (Gas Sponsored!)
 # ══════════════════════════════════════════════════════════════
 
 # STEP 1: Make initial request - receive 402 challenge
@@ -669,7 +669,7 @@ curl -X POST "${PROD_API_URL}/agent/generate" \\
 # {
 #   "x402Version": 2,
 #   "accepts": [{
-#     "scheme": "x402-thirdweb",
+#     "scheme": "x402-eip3009",
 #     "network": "avalanche",
 #     "token": "USDC",
 #     "price": "0.05",
@@ -678,7 +678,7 @@ curl -X POST "${PROD_API_URL}/agent/generate" \\
 # }
 
 # STEP 2: Sign EIP-3009 USDC authorization (see TypeScript example)
-# No gas fees! thirdweb settles payment on-chain for you
+# No gas fees! Server settles payment on-chain for you
 
 # STEP 3: Retry request with signed authorization
 curl -X POST "${PROD_API_URL}/agent/generate" \\
@@ -690,7 +690,7 @@ curl -X POST "${PROD_API_URL}/agent/generate" \\
   }'`, [modelId, prompt]);
 
   const typescriptCode = useMemo(() => `// ══════════════════════════════════════════════════════════════
-// x402 Protocol - ZeroPrompt AI API (thirdweb x402)
+// x402 Protocol - ZeroPrompt AI API (EIP-3009)
 // Production Endpoint: ${PROD_API_URL}
 // Payment: USDC with Gas Sponsorship!
 // ══════════════════════════════════════════════════════════════
@@ -772,7 +772,7 @@ async function callZeroPrompt(prompt: string, model: string) {
   // 3. Retry with signed authorization
   const paymentPayload = {
     x402Version: 2,
-    scheme: 'x402-thirdweb',
+    scheme: 'x402-eip3009',
     payload: {
       authorization: {
         from: account.address,
@@ -811,7 +811,7 @@ console.log('AI Response:', result.result);`, [modelId, prompt]);
   const pythonCode = useMemo(() => `# ══════════════════════════════════════════════════════════════
 # x402 Protocol - ZeroPrompt AI API (Python)
 # Production Endpoint: ${PROD_API_URL}
-# Payment: USDC with Gas Sponsorship via thirdweb!
+# Payment: USDC with Gas Sponsorship!
 # pip install web3 requests eth-account
 # ══════════════════════════════════════════════════════════════
 
@@ -893,7 +893,7 @@ def call_zeroprompt(prompt: str, model: str) -> dict:
     # 3. Build x402 payment payload
     payment_payload = {
         'x402Version': 2,
-        'scheme': 'x402-thirdweb',
+        'scheme': 'x402-eip3009',
         'payload': {
             'authorization': {
                 'from': account.address,
@@ -1171,10 +1171,10 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
           <View style={styles.x402Banner}>
             <View style={styles.x402BannerLeft}>
               <Text style={styles.x402BannerLabel}>PAYMENT PROTOCOL</Text>
-              <Text style={styles.x402BannerTitle}>Powered by x402 + thirdweb</Text>
+              <Text style={styles.x402BannerTitle}>Powered by x402 + EIP-3009</Text>
               <Text style={styles.x402BannerDesc}>
                 x402 is the HTTP 402 "Payment Required" standard for machine-to-machine payments.
-                Combined with thirdweb's facilitator, it enables gasless USDC payments on 6+ chains.
+                Combined with EIP-3009 TransferWithAuthorization, it enables gasless USDC payments on Avalanche.
               </Text>
             </View>
             <View style={styles.x402BannerRight}>
@@ -1184,7 +1184,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
               </View>
               <View style={styles.x402Feature}>
                 <Globe size={20} color="#8B5CF6" />
-                <Text style={styles.x402FeatureText}>6+ EVM chains supported</Text>
+                <Text style={styles.x402FeatureText}>Avalanche C-Chain</Text>
               </View>
               <View style={styles.x402Feature}>
                 <Zap size={20} color="#00FF41" />

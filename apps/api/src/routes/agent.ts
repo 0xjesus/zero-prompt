@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { x402Thirdweb } from '../middleware/x402-thirdweb';
+import { x402Middleware } from '../middleware/x402';
 import { getModels } from '../services/openrouter';
 import { generateQuote, getAvaxPrice, getMinimumPaymentAVAX } from '../services/quote';
 
@@ -159,7 +159,7 @@ agentRouter.get('/payment-methods', (_req, res) => {
 // A premium route specifically for AI Agents
 // Cost: $0.01 USD (USDC on 170+ chains with gas sponsorship)
 agentRouter.get('/premium-data',
-  x402Thirdweb({
+  x402Middleware({
     price: "0.01",
     resourceId: "/agent/premium-data",
     description: "Premium Market Data for Agents"
@@ -205,7 +205,7 @@ function isImageGenerationModel(modelId: string): boolean {
 // LLM/Image Generation route with proper image handling
 // Cost: $0.05 USD (USDC on 170+ chains with gas sponsorship)
 agentRouter.post('/generate',
-  x402Thirdweb({
+  x402Middleware({
     price: "0.05",
     resourceId: "/agent/generate",
     description: "Agent LLM/Image Generation Request"
@@ -349,7 +349,7 @@ agentRouter.post('/generate',
 // Cost: $0.10 USD (covers up to 4 models)
 // ============================================================================
 agentRouter.post('/battle',
-  x402Thirdweb({
+  x402Middleware({
     price: "0.10",
     resourceId: "/agent/battle",
     description: "Model Battle - Compare Multiple LLMs"
@@ -443,7 +443,7 @@ agentRouter.post('/battle',
 // Cost: $0.08 USD
 // ============================================================================
 agentRouter.post('/consensus',
-  x402Thirdweb({
+  x402Middleware({
     price: "0.08",
     resourceId: "/agent/consensus",
     description: "AI Consensus - Multiple Models Vote"
@@ -582,7 +582,7 @@ Provide:
 // Cost: $0.15 USD (covers 3 image models)
 // ============================================================================
 agentRouter.post('/image-gallery',
-  x402Thirdweb({
+  x402Middleware({
     price: "0.15",
     resourceId: "/agent/image-gallery",
     description: "Image Gallery - Multiple AI Art Models"

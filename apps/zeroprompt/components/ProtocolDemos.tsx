@@ -11,7 +11,7 @@ import {
   Users, Trophy, AlertCircle, Plus, Copy, Terminal, ChevronDown, ChevronUp
 } from 'lucide-react-native';
 import { API_URL } from '../config/api';
-import { MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/thirdweb';
+import { MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/constants';
 import ModelSelectorModal from './ModelSelectorModal';
 
 // Breakpoint for desktop layout

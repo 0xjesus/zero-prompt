@@ -11,9 +11,9 @@ import {
 } from "react-native";
 import { X, CreditCard, Coins, Zap, ChevronRight } from "lucide-react-native";
 
-// Lazy load thirdweb widget for web only
-const ThirdwebDepositWidget = Platform.OS === "web"
-  ? lazy(() => import("./ThirdwebWidgets.web").then(m => ({ default: m.ThirdwebDepositWidget })))
+// Lazy load deposit widget for web only
+const DepositWidgetComponent = Platform.OS === "web"
+  ? lazy(() => import("./DepositWidget.web").then(m => ({ default: m.DepositWidget })))
   : null;
 
 // Types
@@ -281,8 +281,8 @@ export default function DepositModal({
                 </View>
               ) : (
                 <View style={styles.widgetPlaceholder}>
-                  {/* Thirdweb Widget */}
-                  {ThirdwebDepositWidget && (
+                  {/* Deposit Widget */}
+                  {DepositWidgetComponent && (
                     <Suspense fallback={
                       <View style={{ padding: 40, alignItems: 'center' }}>
                         <ActivityIndicator size="large" color="#8B5CF6" />
@@ -291,7 +291,7 @@ export default function DepositModal({
                         </Text>
                       </View>
                     }>
-                      <ThirdwebDepositWidget
+                      <DepositWidgetComponent
                         method="avax"
                         amountUSD={selectedAmount}
                         userAddress={userAddress}
@@ -326,7 +326,7 @@ export default function DepositModal({
           {/* Footer */}
           <View style={styles.footer}>
             <Text style={[styles.footerText, { color: theme.textMuted }]}>
-              Powered by thirdweb - Secure & Non-custodial
+              Secure & Non-custodial - Avalanche C-Chain
             </Text>
           </View>
         </View>

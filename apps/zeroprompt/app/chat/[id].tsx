@@ -42,7 +42,7 @@ import DepositModal from "../../components/DepositModal";
 import { WalletConnectModal, WalletSidebarSection, MigrationBanner } from "../../components/WalletConnectionUI";
 import ModelSelectorModal from "../../components/ModelSelectorModal";
 import ImageGalleryModal from "../../components/ImageGalleryModal";
-import { VAULT_ADDRESS } from "../../lib/thirdweb";
+import { VAULT_ADDRESS } from "../../lib/constants";
 import { API_URL } from "../../config/api";
 
 type Model = {
@@ -2847,7 +2847,7 @@ export default function ChatScreen() {
         requiredAmount={requiredCredits || undefined}
       />
 
-      {/* Gasless Deposit Modal (thirdweb - Gas Sponsored!) */}
+      {/* Gasless Deposit Modal (Gas Sponsored!) */}
       <DepositModal
         visible={showDepositModal}
         onClose={closeDepositModal}

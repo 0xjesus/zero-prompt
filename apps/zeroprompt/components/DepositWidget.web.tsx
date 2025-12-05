@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput } from "react-native";
 import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
 import { parseEther } from "viem";
-import { VAULT_ADDRESS, SPONSORED_CHAINS } from "../lib/thirdweb";
+import { VAULT_ADDRESS } from "../lib/constants";
 import { CreditCard, Coins, Check, ArrowRight, AlertCircle, ChevronRight, RefreshCw } from "lucide-react-native";
 import { API_URL } from "../config/api";
 
@@ -81,7 +81,7 @@ const AMOUNT_PRESETS = ["5", "10", "25", "50", "100"];
 // DEPOSIT WIDGET COMPONENT
 // ============================================================================
 
-export function ThirdwebDepositWidget({
+export function DepositWidget({
   method,
   amountUSD,
   userAddress,
@@ -1105,4 +1105,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ThirdwebDepositWidget;
+export default DepositWidget;
