@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Platform,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { X, CreditCard, Coins, Zap, ChevronRight } from "lucide-react-native";
 
@@ -186,7 +187,10 @@ export default function DepositModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
-              <Zap color="#8B5CF6" size={24} />
+              <Image
+                source={require('../assets/logos/avax-logo.png')}
+                style={styles.headerLogo}
+              />
               <Text style={[styles.title, { color: theme.text }]}>
                 Add Credits
               </Text>
@@ -360,6 +364,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  headerLogo: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
   title: {
     fontSize: 20,

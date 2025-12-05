@@ -1282,30 +1282,44 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
                 <TouchableOpacity
                   style={[
                     styles.paymentMethodOption,
-                    paymentMethod === 'native' && styles.paymentMethodOptionActive
+                    paymentMethod === 'native' && styles.paymentMethodOptionActiveAVAX
                   ]}
                   onPress={() => setPaymentMethod('native')}
                 >
-                  <Text style={[
-                    styles.paymentMethodText,
-                    paymentMethod === 'native' && styles.paymentMethodTextActive
-                  ]}>
-                    {AVALANCHE_CONFIG.nativeCurrency} (Native)
-                  </Text>
+                  <Image
+                    source={require('../../assets/logos/avax-logo.png')}
+                    style={styles.paymentMethodLogo}
+                  />
+                  <View>
+                    <Text style={[
+                      styles.paymentMethodText,
+                      paymentMethod === 'native' && styles.paymentMethodTextActiveAVAX
+                    ]}>
+                      AVAX
+                    </Text>
+                    <Text style={styles.paymentMethodSubtext}>Native</Text>
+                  </View>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.paymentMethodOption,
-                    paymentMethod === 'usdc' && styles.paymentMethodOptionActive
+                    paymentMethod === 'usdc' && styles.paymentMethodOptionActiveUSDC
                   ]}
                   onPress={() => setPaymentMethod('usdc')}
                 >
-                  <Text style={[
-                    styles.paymentMethodText,
-                    paymentMethod === 'usdc' && styles.paymentMethodTextActive
-                  ]}>
-                    USDC (Gas Sponsored)
-                  </Text>
+                  <Image
+                    source={require('../../assets/logos/usd-logo.png')}
+                    style={styles.paymentMethodLogo}
+                  />
+                  <View>
+                    <Text style={[
+                      styles.paymentMethodText,
+                      paymentMethod === 'usdc' && styles.paymentMethodTextActiveUSDC
+                    ]}>
+                      USDC
+                    </Text>
+                    <Text style={[styles.paymentMethodSubtext, { color: '#00FF41' }]}>Gas Free</Text>
+                  </View>
                 </TouchableOpacity>
               </View>
 
@@ -2631,23 +2645,42 @@ const styles = StyleSheet.create({
   },
   paymentMethodOption: {
     flex: 1,
-    padding: 16,
+    flexDirection: 'row',
+    padding: 14,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#222',
     backgroundColor: '#0a0a0a',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: 12
   },
-  paymentMethodOptionActive: {
-    borderColor: '#00FF41',
-    backgroundColor: 'rgba(0, 255, 65, 0.05)'
+  paymentMethodOptionActiveAVAX: {
+    borderColor: '#E84142',
+    backgroundColor: 'rgba(232, 65, 66, 0.1)'
+  },
+  paymentMethodOptionActiveUSDC: {
+    borderColor: '#2775CA',
+    backgroundColor: 'rgba(39, 117, 202, 0.1)'
+  },
+  paymentMethodLogo: {
+    width: 36,
+    height: 36,
+    borderRadius: 18
   },
   paymentMethodText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '600'
+    color: '#888',
+    fontSize: 15,
+    fontWeight: '700'
   },
-  paymentMethodTextActive: {
-    color: '#00FF41'
+  paymentMethodTextActiveAVAX: {
+    color: '#E84142'
+  },
+  paymentMethodTextActiveUSDC: {
+    color: '#2775CA'
+  },
+  paymentMethodSubtext: {
+    color: '#555',
+    fontSize: 11,
+    marginTop: 2
   }
 });
