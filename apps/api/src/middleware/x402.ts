@@ -103,9 +103,20 @@ export const x402Middleware = (options: X402Options) => {
         // Ignore DB errors for failed payment logging
       }
 
+      // Determine error type for better UX
+      const isInsufficientFunds = error.message.includes('INSUFFICIENT_USDC');
+      const errorCode = isInsufficientFunds ? 'INSUFFICIENT_FUNDS' : 'PAYMENT_FAILED';
+      const userMessage = isInsufficientFunds
+        ? error.message.replace('INSUFFICIENT_USDC: ', '')
+        : error.message;
+      const hint = isInsufficientFunds
+        ? `You need $${options.price} USDC on Avalanche. Get USDC at a DEX or bridge from another chain.`
+        : "Please try again";
+
       return res.status(402).json({
         x402Version: 2,
-        error: error.message,
+        error: userMessage,
+        errorCode,
         accepts: [{
           scheme: "x402-eip3009",
           network: "avalanche",
@@ -115,7 +126,7 @@ export const x402Middleware = (options: X402Options) => {
           payTo: MERCHANT_ADDRESS,
           gasSponsored: true,
         }],
-        hint: "Please try again",
+        hint,
       });
     }
   };
@@ -168,7 +179,10 @@ async function handleEIP3009Payment(
   // Check balance
   const balance = await usdcContract.balanceOf(from);
   if (balance < BigInt(value)) {
-    throw new Error(`Insufficient USDC: ${ethers.formatUnits(balance, 6)} < ${ethers.formatUnits(value, 6)}`);
+    const currentBalance = ethers.formatUnits(balance, 6);
+    const requiredAmount = ethers.formatUnits(value, 6);
+    const shortfall = (parseFloat(requiredAmount) - parseFloat(currentBalance)).toFixed(2);
+    throw new Error(`INSUFFICIENT_USDC: You have $${currentBalance} USDC but need $${requiredAmount} USDC. Please add at least $${shortfall} USDC to your wallet.`);
   }
 
   // Split signature
