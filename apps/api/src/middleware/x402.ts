@@ -2,6 +2,25 @@ import { Request, Response, NextFunction } from 'express';
 import { ethers } from 'ethers';
 import { prisma } from '../prisma';
 
+// Cache AVAX price for 60 seconds
+let avaxPriceCache: { price: number; timestamp: number } | null = null;
+const AVAX_PRICE_CACHE_TTL = 60000;
+
+async function getAvaxPrice(): Promise<number> {
+  if (avaxPriceCache && Date.now() - avaxPriceCache.timestamp < AVAX_PRICE_CACHE_TTL) {
+    return avaxPriceCache.price;
+  }
+  try {
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=avalanche-2&vs_currencies=usd');
+    const data = await response.json();
+    const price = data['avalanche-2']?.usd || 25; // Default to $25 if API fails
+    avaxPriceCache = { price, timestamp: Date.now() };
+    return price;
+  } catch {
+    return avaxPriceCache?.price || 25;
+  }
+}
+
 // ----------------------------------------------------------------
 // x402 MIDDLEWARE - USDC EIP-3009 Payments (Avalanche Only)
 // ----------------------------------------------------------------
@@ -42,23 +61,40 @@ export const x402Middleware = (options: X402Options) => {
     // NO PAYMENT -> RETURN 402 CHALLENGE
     // ----------------------------------------------------------------
     if (!paymentHeader) {
+      const avaxPrice = await getAvaxPrice();
+      const priceInAvax = (parseFloat(options.price) / avaxPrice * 1.05).toFixed(4); // 5% buffer for price fluctuation
+
       return res.status(402).json({
         x402Version: 2,
-        accepts: [{
-          scheme: "x402-eip3009",
-          network: "avalanche",
-          chainId: AVALANCHE_CHAIN_ID,
-          token: AVALANCHE_USDC,
-          tokenSymbol: "USDC",
-          price: options.price,
-          resource: options.resourceId,
-          description: options.description,
-          payTo: MERCHANT_ADDRESS,
-          maxTimeoutSeconds: 600,
-          gasSponsored: true,
-        }],
+        accepts: [
+          {
+            scheme: "x402-eip3009",
+            network: "avalanche",
+            chainId: AVALANCHE_CHAIN_ID,
+            token: AVALANCHE_USDC,
+            tokenSymbol: "USDC",
+            price: options.price,
+            resource: options.resourceId,
+            description: options.description,
+            payTo: MERCHANT_ADDRESS,
+            maxTimeoutSeconds: 600,
+            gasSponsored: true,
+          },
+          {
+            scheme: "x402-native",
+            network: "avalanche",
+            chainId: AVALANCHE_CHAIN_ID,
+            tokenSymbol: "AVAX",
+            price: priceInAvax,
+            priceUSD: options.price,
+            resource: options.resourceId,
+            description: options.description,
+            payTo: MERCHANT_ADDRESS,
+            maxTimeoutSeconds: 600,
+          }
+        ],
         error: "Payment required",
-        hint: `Pay $${options.price} USDC on Avalanche. Gas is sponsored!`,
+        hint: `Pay $${options.price} in USDC (gas sponsored) or ${priceInAvax} AVAX`,
       });
     }
 
@@ -249,7 +285,7 @@ async function handleNativePayment(
   res: Response,
   next: NextFunction,
   paymentData: any,
-  _options: X402Options
+  options: X402Options
 ) {
   const { payload } = paymentData;
   const { txHash, from } = payload;
@@ -266,12 +302,44 @@ async function handleNativePayment(
     throw new Error(`Invalid recipient: ${tx.to}`);
   }
 
-  console.log(`[x402] ✓ Native payment verified: ${txHash}`);
+  // Validate AVAX amount
+  const avaxPrice = await getAvaxPrice();
+  const requiredUSD = parseFloat(options.price);
+  const paidAvax = parseFloat(ethers.formatEther(tx.value));
+  const paidUSD = paidAvax * avaxPrice;
+
+  // Allow 10% slippage for price fluctuations
+  if (paidUSD < requiredUSD * 0.9) {
+    throw new Error(`INSUFFICIENT_AVAX: Paid $${paidUSD.toFixed(2)} but need $${requiredUSD}. Send more AVAX.`);
+  }
+
+  console.log(`[x402] ✓ Native AVAX payment verified: ${txHash} (${paidAvax} AVAX = $${paidUSD.toFixed(2)})`);
+
+  // Log payment to database
+  const modelUsed = req.body?.model || null;
+  try {
+    await prisma.x402Payment.create({
+      data: {
+        txHash: txHash,
+        fromAddress: from,
+        toAddress: MERCHANT_ADDRESS,
+        amountUSDC: paidUSD.toFixed(2), // Store USD equivalent
+        priceUSD: options.price,
+        endpoint: options.resourceId,
+        model: modelUsed,
+        status: 'success',
+      },
+    });
+    console.log(`[x402] ✓ AVAX Payment logged to DB`);
+  } catch (dbError: any) {
+    console.error(`[x402] DB log error:`, dbError.message);
+  }
 
   (req as any).x402 = {
     settled: true,
     payer: from,
-    amount: ethers.formatEther(tx.value),
+    amount: paidAvax.toString(),
+    amountUSD: paidUSD.toFixed(2),
     currency: 'AVAX',
     network: 'avalanche',
     txHash,

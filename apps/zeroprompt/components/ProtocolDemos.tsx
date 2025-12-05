@@ -3,8 +3,8 @@ import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   StyleSheet, ActivityIndicator, Image, Platform, useWindowDimensions
 } from 'react-native';
-import { useSignTypedData } from 'wagmi';
-import { getAddress } from 'viem';
+import { useSignTypedData, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
+import { getAddress, parseEther } from 'viem';
 import Markdown from 'react-native-markdown-display';
 import {
   Swords, Brain, ImageIcon, CheckCircle, XCircle,
@@ -231,10 +231,70 @@ interface DemoProps {
 }
 
 // ============================================================================
+// PAYMENT METHOD SELECTOR COMPONENT
+// ============================================================================
+type PaymentMethod = 'USDC' | 'AVAX';
+
+const PaymentMethodSelector = ({
+  selected,
+  onSelect,
+  avaxPrice
+}: {
+  selected: PaymentMethod;
+  onSelect: (method: PaymentMethod) => void;
+  avaxPrice?: string;
+}) => (
+  <View style={paymentStyles.container}>
+    <Text style={paymentStyles.label}>Pay with:</Text>
+    <View style={paymentStyles.buttons}>
+      <TouchableOpacity
+        style={[paymentStyles.button, selected === 'USDC' && paymentStyles.buttonActive]}
+        onPress={() => onSelect('USDC')}
+      >
+        <Text style={[paymentStyles.buttonText, selected === 'USDC' && paymentStyles.buttonTextActive]}>
+          USDC (Gas Free)
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[paymentStyles.button, selected === 'AVAX' && paymentStyles.buttonActive]}
+        onPress={() => onSelect('AVAX')}
+      >
+        <Text style={[paymentStyles.buttonText, selected === 'AVAX' && paymentStyles.buttonTextActive]}>
+          AVAX {avaxPrice ? `(~${avaxPrice})` : ''}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+);
+
+const paymentStyles = StyleSheet.create({
+  container: { marginBottom: 16 },
+  label: { color: '#888', fontSize: 12, marginBottom: 8 },
+  buttons: { flexDirection: 'row', gap: 8 },
+  button: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    backgroundColor: '#1a1a1a',
+    alignItems: 'center',
+  },
+  buttonActive: {
+    borderColor: '#00FF41',
+    backgroundColor: '#00FF4115',
+  },
+  buttonText: { color: '#888', fontSize: 13, fontWeight: '500' },
+  buttonTextActive: { color: '#00FF41' },
+});
+
+// ============================================================================
 // MODEL BATTLE COMPONENT
 // ============================================================================
 const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: DemoProps) => {
   const { signTypedDataAsync } = useSignTypedData();
+  const { sendTransactionAsync } = useSendTransaction();
   const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_BREAKPOINT;
   const [prompt, setPrompt] = useState('Explain quantum computing in simple terms.');
@@ -243,6 +303,8 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
+  const [avaxPriceDisplay, setAvaxPriceDisplay] = useState<string | undefined>();
 
   // Filter to only text models for battle
   const textModels = models.filter(m => {
@@ -289,69 +351,99 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
       }
 
       const challenge = await initialRes.json();
-      const priceUSD = parseFloat(challenge.accepts[0].price);
 
-      // Sign EIP-3009 authorization
-      const usdcAmount = BigInt(Math.ceil(priceUSD * 1_000_000));
-      const nonceBytes = new Uint8Array(32);
-      crypto.getRandomValues(nonceBytes);
-      const nonce = '0x' + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+      // Get prices from challenge
+      const usdcOption = challenge.accepts.find((a: any) => a.scheme === 'x402-eip3009');
+      const avaxOption = challenge.accepts.find((a: any) => a.scheme === 'x402-native');
 
-      const now = Math.floor(Date.now() / 1000);
-      const validAfter = BigInt(now - 60);
-      const validBefore = BigInt(now + 3600);
+      if (avaxOption) {
+        setAvaxPriceDisplay(avaxOption.price);
+      }
 
-      const domain = {
-        name: 'USD Coin',
-        version: '2',
-        chainId: AVALANCHE_CONFIG.chainId,
-        verifyingContract: AVALANCHE_CONFIG.usdc
-      };
+      let paymentPayload: any;
 
-      const types = {
-        TransferWithAuthorization: [
-          { name: 'from', type: 'address' },
-          { name: 'to', type: 'address' },
-          { name: 'value', type: 'uint256' },
-          { name: 'validAfter', type: 'uint256' },
-          { name: 'validBefore', type: 'uint256' },
-          { name: 'nonce', type: 'bytes32' }
-        ]
-      } as const;
+      if (paymentMethod === 'AVAX' && avaxOption) {
+        // AVAX Payment - Send native transaction
+        const avaxAmount = parseEther(avaxOption.price);
 
-      const message = {
-        from: address as `0x${string}`,
-        to: MERCHANT_ADDRESS,
-        value: usdcAmount,
-        validAfter,
-        validBefore,
-        nonce: nonce as `0x${string}`
-      };
-
-      const signature = await signTypedDataAsync({
-        domain,
-        types,
-        primaryType: 'TransferWithAuthorization',
-        message
-      });
-
-      // Build payment payload
-      const paymentPayload = {
-        x402Version: 2,
-        scheme: 'x402-eip3009',
-        network: 'avalanche',
-        chainId: AVALANCHE_CONFIG.chainId,
-        token: AVALANCHE_CONFIG.usdc,
-        payload: {
-          from: address,
+        const txHash = await sendTransactionAsync({
           to: MERCHANT_ADDRESS,
-          value: usdcAmount.toString(),
-          validAfter: validAfter.toString(),
-          validBefore: validBefore.toString(),
-          nonce,
-          signature
-        }
-      };
+          value: avaxAmount,
+        });
+
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-native',
+          network: 'avalanche',
+          chainId: AVALANCHE_CONFIG.chainId,
+          payload: {
+            txHash,
+            from: address,
+          }
+        };
+      } else {
+        // USDC Payment - Sign EIP-3009 authorization
+        const priceUSD = parseFloat(usdcOption.price);
+        const usdcAmount = BigInt(Math.ceil(priceUSD * 1_000_000));
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+        const nonce = '0x' + Array.from(nonceBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        const now = Math.floor(Date.now() / 1000);
+        const validAfter = BigInt(now - 60);
+        const validBefore = BigInt(now + 3600);
+
+        const domain = {
+          name: 'USD Coin',
+          version: '2',
+          chainId: AVALANCHE_CONFIG.chainId,
+          verifyingContract: AVALANCHE_CONFIG.usdc
+        };
+
+        const types = {
+          TransferWithAuthorization: [
+            { name: 'from', type: 'address' },
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'validAfter', type: 'uint256' },
+            { name: 'validBefore', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' }
+          ]
+        } as const;
+
+        const message = {
+          from: address as `0x${string}`,
+          to: MERCHANT_ADDRESS,
+          value: usdcAmount,
+          validAfter,
+          validBefore,
+          nonce: nonce as `0x${string}`
+        };
+
+        const signature = await signTypedDataAsync({
+          domain,
+          types,
+          primaryType: 'TransferWithAuthorization',
+          message
+        });
+
+        paymentPayload = {
+          x402Version: 2,
+          scheme: 'x402-eip3009',
+          network: 'avalanche',
+          chainId: AVALANCHE_CONFIG.chainId,
+          token: AVALANCHE_CONFIG.usdc,
+          payload: {
+            from: address,
+            to: MERCHANT_ADDRESS,
+            value: usdcAmount.toString(),
+            validAfter: validAfter.toString(),
+            validBefore: validBefore.toString(),
+            nonce,
+            signature
+          }
+        };
+      }
 
       const paymentHeader = btoa(JSON.stringify(paymentPayload));
 
@@ -366,7 +458,8 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
       });
 
       if (!response.ok) {
-        throw new Error('Battle failed');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Battle failed');
       }
 
       const data = await response.json();
@@ -440,10 +533,21 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
         onChangeText={setPrompt}
       />
 
+      {/* Payment Method Selector */}
+      <PaymentMethodSelector
+        selected={paymentMethod}
+        onSelect={setPaymentMethod}
+        avaxPrice={avaxPriceDisplay}
+      />
+
       {/* Price Info */}
       <View style={styles.priceBox}>
-        <Text style={styles.priceLabel}>Cost: $0.10 USDC</Text>
-        <Text style={styles.priceHint}>Gas sponsored!</Text>
+        <Text style={styles.priceLabel}>
+          Cost: {paymentMethod === 'USDC' ? '$0.10 USDC' : `~${avaxPriceDisplay || '0.008'} AVAX`}
+        </Text>
+        <Text style={styles.priceHint}>
+          {paymentMethod === 'USDC' ? 'Gas sponsored!' : 'You pay gas'}
+        </Text>
       </View>
 
       {/* Execute Button */}
@@ -531,6 +635,7 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
 // ============================================================================
 const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: DemoProps) => {
   const { signTypedDataAsync } = useSignTypedData();
+  const { sendTransactionAsync } = useSendTransaction();
   const { width } = useWindowDimensions();
   const isDesktop = width >= DESKTOP_BREAKPOINT;
   const [prompt, setPrompt] = useState('Is artificial general intelligence (AGI) possible within the next 10 years?');
@@ -541,6 +646,8 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
+  const [avaxPriceDisplay, setAvaxPriceDisplay] = useState<string | undefined>();
 
   // Filter to only text models for consensus
   const textModels = models.filter(m => {
