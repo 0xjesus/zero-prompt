@@ -18,6 +18,7 @@ export default function RootLayout() {
               <Stack.Screen name="docs" />
               <Stack.Screen name="protocol" />
               <Stack.Screen name="dashboard" />
+              <Stack.Screen name="x402" />
             </Stack>
             <StatusBar style="auto" />
           </BillingProvider>

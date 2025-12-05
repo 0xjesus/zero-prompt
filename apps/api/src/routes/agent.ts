@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { x402Middleware } from '../middleware/x402';
 import { getModels } from '../services/openrouter';
 import { generateQuote, getAvaxPrice, getMinimumPaymentAVAX } from '../services/quote';
+import { prisma } from '../prisma';
 
 // OpenRouter config for image generation
 const OPENROUTER_API_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
@@ -734,3 +735,55 @@ agentRouter.post('/image-gallery',
     }
   }
 );
+
+// ============================================================================
+// x402 PAYMENT LOGS - View all x402 payments
+// ============================================================================
+agentRouter.get('/x402-logs', async (req, res) => {
+  try {
+    const { limit = '100', status, fromAddress, endpoint } = req.query;
+
+    const where: any = {};
+
+    if (status && typeof status === 'string') {
+      where.status = status;
+    }
+
+    if (fromAddress && typeof fromAddress === 'string') {
+      where.fromAddress = fromAddress.toLowerCase();
+    }
+
+    if (endpoint && typeof endpoint === 'string') {
+      where.endpoint = endpoint;
+    }
+
+    const payments = await prisma.x402Payment.findMany({
+      where,
+      take: Math.min(parseInt(limit as string), 500),
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Calculate stats
+    const stats = {
+      total: payments.length,
+      successful: payments.filter(p => p.status === 'success').length,
+      failed: payments.filter(p => p.status === 'failed').length,
+      pending: payments.filter(p => p.status === 'pending').length,
+      totalUSDC: payments
+        .filter(p => p.status === 'success')
+        .reduce((sum, p) => sum + parseFloat(p.amountUSDC || '0'), 0)
+        .toFixed(2)
+    };
+
+    res.json({
+      success: true,
+      payments,
+      stats,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    console.error("[x402-logs] Error:", error);
+    res.status(500).json({ error: "Failed to fetch x402 logs", details: error.message });
+  }
+});

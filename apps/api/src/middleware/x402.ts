@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { ethers } from 'ethers';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 // ----------------------------------------------------------------
 // x402 MIDDLEWARE - USDC EIP-3009 Payments (Avalanche Only)
@@ -80,6 +83,27 @@ export const x402Middleware = (options: X402Options) => {
 
     } catch (error: any) {
       console.error("[x402] Payment error:", error.message);
+
+      // Log failed payment attempt
+      try {
+        const decoded = Buffer.from(paymentHeader, 'base64').toString('utf-8');
+        const paymentData = JSON.parse(decoded);
+        const from = paymentData.payload?.from || 'unknown';
+        await prisma.x402Payment.create({
+          data: {
+            fromAddress: from,
+            toAddress: MERCHANT_ADDRESS,
+            amountUSDC: '0',
+            priceUSD: options.price,
+            endpoint: options.resourceId,
+            model: req.body?.model || null,
+            status: 'failed',
+            errorMessage: error.message,
+          },
+        });
+      } catch (dbError) {
+        // Ignore DB errors for failed payment logging
+      }
 
       return res.status(402).json({
         x402Version: 2,
@@ -166,6 +190,26 @@ async function handleEIP3009Payment(
   if (receipt.status !== 1) throw new Error('Transaction failed');
 
   console.log(`[x402] ✓ Payment confirmed! Block: ${receipt.blockNumber}`);
+
+  // Log payment to database
+  const modelUsed = req.body?.model || null;
+  try {
+    await prisma.x402Payment.create({
+      data: {
+        txHash: tx.hash,
+        fromAddress: from,
+        toAddress: to,
+        amountUSDC: ethers.formatUnits(value, 6),
+        priceUSD: options.price,
+        endpoint: options.resourceId,
+        model: modelUsed,
+        status: 'success',
+      },
+    });
+    console.log(`[x402] ✓ Payment logged to DB`);
+  } catch (dbError: any) {
+    console.error(`[x402] DB log error:`, dbError.message);
+  }
 
   (req as any).x402 = {
     settled: true,

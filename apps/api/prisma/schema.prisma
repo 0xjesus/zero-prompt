@@ -114,10 +114,31 @@ model Usage {
   outputTokens  Int      @map("output_tokens")
   costUSD       Decimal  @map("cost_usd") @db.Decimal(18, 8)
   requestId     String   @unique @map("request_id")
-  
+
   createdAt     DateTime @default(now())
 
   @@index([walletAddress])
   @@index([createdAt])
   @@map("usage_records")
+}
+
+model X402Payment {
+  id            Int      @id @default(autoincrement())
+  txHash        String?  @unique @map("tx_hash")
+  fromAddress   String   @map("from_address")
+  toAddress     String   @map("to_address")
+  amountUSDC    String   @map("amount_usdc")
+  priceUSD      String   @map("price_usd")
+  endpoint      String
+  model         String?
+  status        String   @default("pending") // pending, success, failed
+  errorMessage  String?  @map("error_message") @db.Text
+
+  createdAt     DateTime @default(now())
+
+  @@index([fromAddress])
+  @@index([endpoint])
+  @@index([status])
+  @@index([createdAt])
+  @@map("x402_payments")
 }
