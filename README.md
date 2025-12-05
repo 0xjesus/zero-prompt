@@ -4,7 +4,7 @@
 
 ZeroPrompt is an AI platform where you pay only for what you use. Connect your wallet, pick a model, and pay per request with USDC on Avalanche. Gas fees are sponsored—you only pay for the AI.
 
-🌐 **Live Demo:** [zeroprompt.ai](https://zeroprompt.ai)
+🌐 **Live Demo:** [0prompt.xyz](https://0prompt.xyz)
 
 ---
 
@@ -78,7 +78,7 @@ POST /agent/generate
 
 ## Live Demos
 
-Visit [zeroprompt.ai/x402](https://zeroprompt.ai/x402) to try:
+Visit [0prompt.xyz/x402](https://0prompt.xyz/x402) to try:
 
 ### Model Battle
 Compare 2-4 models side-by-side on the same prompt. See which performs better for your use case.
@@ -155,7 +155,7 @@ usdc.transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, 
 ### Generate (Text/Image)
 
 ```bash
-curl -X POST 'https://api.zeroprompt.ai/agent/generate' \
+curl -X POST 'https://api.0prompt.xyz/agent/generate' \
   -H 'Content-Type: application/json' \
   -H 'X-Payment: <base64-encoded-eip3009-signature>' \
   -d '{
@@ -286,8 +286,8 @@ zero-prompt/
 
 ## Links
 
-- **Live App:** [zeroprompt.ai](https://zeroprompt.ai)
-- **x402 Demo:** [zeroprompt.ai/x402](https://zeroprompt.ai/x402)
+- **Live App:** [0prompt.xyz](https://0prompt.xyz)
+- **x402 Demo:** [0prompt.xyz/x402](https://0prompt.xyz/x402)
 - **GitHub:** [github.com/0xjesus/zero-prompt](https://github.com/0xjesus/zero-prompt)
 
 ---
