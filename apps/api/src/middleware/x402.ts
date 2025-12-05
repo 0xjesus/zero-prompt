@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ethers } from 'ethers';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../prisma';
 
 // ----------------------------------------------------------------
 // x402 MIDDLEWARE - USDC EIP-3009 Payments (Avalanche Only)

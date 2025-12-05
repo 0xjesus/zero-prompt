@@ -766,12 +766,12 @@ agentRouter.get('/x402-logs', async (req, res) => {
     // Calculate stats
     const stats = {
       total: payments.length,
-      successful: payments.filter(p => p.status === 'success').length,
-      failed: payments.filter(p => p.status === 'failed').length,
-      pending: payments.filter(p => p.status === 'pending').length,
+      successful: payments.filter((p: { status: string }) => p.status === 'success').length,
+      failed: payments.filter((p: { status: string }) => p.status === 'failed').length,
+      pending: payments.filter((p: { status: string }) => p.status === 'pending').length,
       totalUSDC: payments
-        .filter(p => p.status === 'success')
-        .reduce((sum, p) => sum + parseFloat(p.amountUSDC || '0'), 0)
+        .filter((p: { status: string }) => p.status === 'success')
+        .reduce((sum: number, p: { amountUSDC: string }) => sum + parseFloat(p.amountUSDC || '0'), 0)
         .toFixed(2)
     };
 

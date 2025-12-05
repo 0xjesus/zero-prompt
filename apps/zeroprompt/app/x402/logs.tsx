@@ -185,22 +185,22 @@ export default function X402LogsScreen() {
         {/* Stats Cards */}
         {stats && (
           <View style={styles.statsContainer}>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <DollarSign size={20} color="#00FF41" />
               <Text style={[styles.statValue, { color: colors.text }]}>${stats.totalUSDC}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Revenue</Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <CheckCircle size={20} color="#00FF41" />
               <Text style={[styles.statValue, { color: colors.text }]}>{stats.successful}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Successful</Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <XCircle size={20} color="#FF4444" />
               <Text style={[styles.statValue, { color: colors.text }]}>{stats.failed}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Failed</Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Zap size={20} color="#FFC107" />
               <Text style={[styles.statValue, { color: colors.text }]}>{stats.total}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Requests</Text>
@@ -235,7 +235,7 @@ export default function X402LogsScreen() {
 
         {/* Payments Table */}
         {!isLoading && !error && (
-          <View style={[styles.tableContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={[styles.tableContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             {/* Table Header */}
             <View style={[styles.tableHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.tableHeaderCell, styles.colStatus, { color: colors.textSecondary }]}>Status</Text>

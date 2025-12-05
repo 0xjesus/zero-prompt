@@ -7,21 +7,21 @@ import { useAccount, useSignTypedData, useSendTransaction } from 'wagmi';
 import { getAddress, parseEther } from 'viem';
 import { Stack, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../context/AuthContext';
-import { WalletConnectModal } from '../components/WalletConnectionUI';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { WalletConnectModal } from '../../components/WalletConnectionUI';
 import {
   Layers, Code, Shield, Zap, ChevronDown, Copy, Check, Terminal, FileCode,
   Play, Wallet, ArrowRight, CheckCircle, Loader, AlertCircle,
   ExternalLink, Sparkles, DollarSign, Lock, Globe, ChevronRight,
   MessageSquare, Home, Bot, Cpu
 } from 'lucide-react-native';
-import ModelSelectorModal from '../components/ModelSelectorModal';
-import { API_URL } from '../config/api';
-import { VAULT_ADDRESS, MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/constants';
-import { useBilling } from '../context/BillingContext';
-import DepositModal from '../components/DepositModal';
-import ProtocolDemos from '../components/ProtocolDemos';
+import ModelSelectorModal from '../../components/ModelSelectorModal';
+import { API_URL } from '../../config/api';
+import { VAULT_ADDRESS, MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../../lib/constants';
+import { useBilling } from '../../context/BillingContext';
+import DepositModal from '../../components/DepositModal';
+import ProtocolDemos from '../../components/ProtocolDemos';
 
 // ============================================================================
 // CONFIG - x402 EIP-3009 (Avalanche Only)
@@ -937,7 +937,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
       <View style={styles.navbar}>
         <TouchableOpacity onPress={() => router.push('/home')} style={styles.navBrand}>
           <Image
-            source={require('../assets/logos/zero-prompt-logo.png')}
+            source={require('../../assets/logos/zero-prompt-logo.png')}
             style={styles.navLogo}
             resizeMode="contain"
           />
@@ -1624,7 +1624,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         {/* FOOTER */}
         <View style={styles.footer}>
           <Image
-            source={require('../assets/logos/zero-prompt-logo.png')}
+            source={require('../../assets/logos/zero-prompt-logo.png')}
             style={{ width: 40, height: 40, marginBottom: 16 }}
             resizeMode="contain"
           />
