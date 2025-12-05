@@ -254,7 +254,10 @@ const PaymentMethodSelector = ({
         style={[paymentStyles.button, selected === 'USDC' && paymentStyles.buttonActiveUSDC]}
         onPress={() => onSelect('USDC')}
       >
-        <Text style={paymentStyles.tokenIcon}>💵</Text>
+        <Image
+          source={require('../assets/logos/usd-logo.png')}
+          style={paymentStyles.tokenLogo}
+        />
         <Text style={[paymentStyles.tokenName, selected === 'USDC' && paymentStyles.tokenNameActiveUSDC]}>
           USDC
         </Text>
@@ -271,7 +274,10 @@ const PaymentMethodSelector = ({
         style={[paymentStyles.button, selected === 'AVAX' && paymentStyles.buttonActiveAVAX]}
         onPress={() => onSelect('AVAX')}
       >
-        <Text style={paymentStyles.tokenIcon}>🔺</Text>
+        <Image
+          source={require('../assets/logos/avax-logo.png')}
+          style={paymentStyles.tokenLogo}
+        />
         <Text style={[paymentStyles.tokenName, selected === 'AVAX' && paymentStyles.tokenNameActiveAVAX]}>
           AVAX
         </Text>
@@ -308,9 +314,11 @@ const paymentStyles = StyleSheet.create({
     borderColor: '#E84142',
     backgroundColor: '#E8414215',
   },
-  tokenIcon: {
-    fontSize: 24,
-    marginBottom: 4,
+  tokenLogo: {
+    width: 32,
+    height: 32,
+    marginBottom: 6,
+    borderRadius: 16,
   },
   tokenName: {
     color: '#666',
