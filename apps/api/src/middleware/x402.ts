@@ -105,7 +105,10 @@ export const x402Middleware = (options: X402Options) => {
       const decoded = Buffer.from(paymentHeader, 'base64').toString('utf-8');
       const paymentData = JSON.parse(decoded);
 
-      console.log('[x402] Payment received:', paymentData.scheme);
+      const paymentType = paymentData.scheme === 'x402-eip3009' ? '💵 USDC' : '🔺 AVAX';
+      console.log(`[x402] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`[x402] ${paymentType} Payment received for ${options.resourceId}`);
+      console.log(`[x402] Price: $${options.price} USD`);
 
       if (paymentData.scheme === 'x402-eip3009') {
         await handleEIP3009Payment(req, res, next, paymentData, options);
@@ -201,7 +204,8 @@ async function handleEIP3009Payment(
   if (now < parseInt(validAfter)) throw new Error('Authorization not yet valid');
   if (now > parseInt(validBefore)) throw new Error('Authorization expired');
 
-  console.log(`[x402] Processing: ${from} -> ${to}, ${ethers.formatUnits(value, 6)} USDC`);
+  console.log(`[x402] 💵 USDC Transfer: ${from.slice(0,8)}... → Merchant`);
+  console.log(`[x402] 💵 Amount: ${ethers.formatUnits(value, 6)} USDC`);
 
   // Connect to Avalanche
   const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
@@ -224,7 +228,7 @@ async function handleEIP3009Payment(
   // Split signature
   const sig = ethers.Signature.from(signature);
 
-  console.log(`[x402] Executing transferWithAuthorization...`);
+  console.log(`[x402] 💵 Executing gasless USDC transfer (server pays gas)...`);
 
   // Execute (server pays gas!)
   const tx = await usdcContract.transferWithAuthorization(
@@ -237,7 +241,7 @@ async function handleEIP3009Payment(
   const receipt = await tx.wait(1);
   if (receipt.status !== 1) throw new Error('Transaction failed');
 
-  console.log(`[x402] ✓ Payment confirmed! Block: ${receipt.blockNumber}`);
+  console.log(`[x402] 💵 ✅ USDC Payment confirmed! Block: ${receipt.blockNumber}`);
 
   // Log payment to database
   const modelUsed = req.body?.model || null;
@@ -254,7 +258,8 @@ async function handleEIP3009Payment(
         status: 'success',
       },
     });
-    console.log(`[x402] ✓ Payment logged to DB`);
+    console.log(`[x402] 💵 ✅ USDC Payment logged to DB`);
+    console.log(`[x402] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   } catch (dbError: any) {
     console.error(`[x402] DB log error:`, dbError.message);
   }
@@ -313,7 +318,9 @@ async function handleNativePayment(
     throw new Error(`INSUFFICIENT_AVAX: Paid $${paidUSD.toFixed(2)} but need $${requiredUSD}. Send more AVAX.`);
   }
 
-  console.log(`[x402] ✓ Native AVAX payment verified: ${txHash} (${paidAvax} AVAX = $${paidUSD.toFixed(2)})`);
+  console.log(`[x402] 🔺 AVAX Transfer: ${from.slice(0,8)}... → Merchant`);
+  console.log(`[x402] 🔺 Amount: ${paidAvax.toFixed(4)} AVAX (~$${paidUSD.toFixed(2)} USD)`);
+  console.log(`[x402] 🔺 ✅ AVAX Payment verified! Tx: ${txHash.slice(0,16)}...`);
 
   // Log payment to database
   const modelUsed = req.body?.model || null;
@@ -330,7 +337,8 @@ async function handleNativePayment(
         status: 'success',
       },
     });
-    console.log(`[x402] ✓ AVAX Payment logged to DB`);
+    console.log(`[x402] 🔺 ✅ AVAX Payment logged to DB`);
+    console.log(`[x402] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
   } catch (dbError: any) {
     console.error(`[x402] DB log error:`, dbError.message);
   }
