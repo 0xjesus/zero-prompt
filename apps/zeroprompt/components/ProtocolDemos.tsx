@@ -238,30 +238,49 @@ type PaymentMethod = 'USDC' | 'AVAX';
 const PaymentMethodSelector = ({
   selected,
   onSelect,
-  avaxPrice
+  avaxPrice,
+  usdPrice
 }: {
   selected: PaymentMethod;
   onSelect: (method: PaymentMethod) => void;
   avaxPrice?: string;
+  usdPrice?: string;
 }) => (
   <View style={paymentStyles.container}>
-    <Text style={paymentStyles.label}>Pay with:</Text>
+    <Text style={paymentStyles.label}>Select payment method:</Text>
     <View style={paymentStyles.buttons}>
+      {/* USDC Option */}
       <TouchableOpacity
-        style={[paymentStyles.button, selected === 'USDC' && paymentStyles.buttonActive]}
+        style={[paymentStyles.button, selected === 'USDC' && paymentStyles.buttonActiveUSDC]}
         onPress={() => onSelect('USDC')}
       >
-        <Text style={[paymentStyles.buttonText, selected === 'USDC' && paymentStyles.buttonTextActive]}>
-          USDC (Gas Free)
+        <Text style={paymentStyles.tokenIcon}>💵</Text>
+        <Text style={[paymentStyles.tokenName, selected === 'USDC' && paymentStyles.tokenNameActiveUSDC]}>
+          USDC
         </Text>
+        <Text style={[paymentStyles.tokenPrice, selected === 'USDC' && paymentStyles.tokenPriceActive]}>
+          ${usdPrice || '0.00'}
+        </Text>
+        <View style={[paymentStyles.badge, paymentStyles.badgeGreen]}>
+          <Text style={paymentStyles.badgeText}>GAS FREE</Text>
+        </View>
       </TouchableOpacity>
+
+      {/* AVAX Option */}
       <TouchableOpacity
-        style={[paymentStyles.button, selected === 'AVAX' && paymentStyles.buttonActive]}
+        style={[paymentStyles.button, selected === 'AVAX' && paymentStyles.buttonActiveAVAX]}
         onPress={() => onSelect('AVAX')}
       >
-        <Text style={[paymentStyles.buttonText, selected === 'AVAX' && paymentStyles.buttonTextActive]}>
-          AVAX {avaxPrice ? `(~${avaxPrice})` : ''}
+        <Text style={paymentStyles.tokenIcon}>🔺</Text>
+        <Text style={[paymentStyles.tokenName, selected === 'AVAX' && paymentStyles.tokenNameActiveAVAX]}>
+          AVAX
         </Text>
+        <Text style={[paymentStyles.tokenPrice, selected === 'AVAX' && paymentStyles.tokenPriceActive]}>
+          ~{avaxPrice || '0.00'} AVAX
+        </Text>
+        <View style={[paymentStyles.badge, paymentStyles.badgeRed]}>
+          <Text style={paymentStyles.badgeText}>NATIVE</Text>
+        </View>
       </TouchableOpacity>
     </View>
   </View>
@@ -269,24 +288,57 @@ const PaymentMethodSelector = ({
 
 const paymentStyles = StyleSheet.create({
   container: { marginBottom: 16 },
-  label: { color: '#888', fontSize: 12, marginBottom: 8 },
-  buttons: { flexDirection: 'row', gap: 8 },
+  label: { color: '#888', fontSize: 12, marginBottom: 10 },
+  buttons: { flexDirection: 'row', gap: 10 },
   button: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 2,
     borderColor: '#333',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#0d0d0d',
     alignItems: 'center',
   },
-  buttonActive: {
-    borderColor: '#00FF41',
-    backgroundColor: '#00FF4115',
+  buttonActiveUSDC: {
+    borderColor: '#2775CA',
+    backgroundColor: '#2775CA15',
   },
-  buttonText: { color: '#888', fontSize: 13, fontWeight: '500' },
-  buttonTextActive: { color: '#00FF41' },
+  buttonActiveAVAX: {
+    borderColor: '#E84142',
+    backgroundColor: '#E8414215',
+  },
+  tokenIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  tokenName: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  tokenNameActiveUSDC: { color: '#2775CA' },
+  tokenNameActiveAVAX: { color: '#E84142' },
+  tokenPrice: {
+    color: '#888',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  tokenPriceActive: { color: '#FFF' },
+  badge: {
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  badgeGreen: { backgroundColor: '#00FF4130' },
+  badgeRed: { backgroundColor: '#E8414230' },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
 });
 
 // ============================================================================
@@ -538,17 +590,8 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
         selected={paymentMethod}
         onSelect={setPaymentMethod}
         avaxPrice={avaxPriceDisplay}
+        usdPrice="0.10"
       />
-
-      {/* Price Info */}
-      <View style={styles.priceBox}>
-        <Text style={styles.priceLabel}>
-          Cost: {paymentMethod === 'USDC' ? '$0.10 USDC' : `~${avaxPriceDisplay || '0.008'} AVAX`}
-        </Text>
-        <Text style={styles.priceHint}>
-          {paymentMethod === 'USDC' ? 'Gas sponsored!' : 'You pay gas'}
-        </Text>
-      </View>
 
       {/* Execute Button */}
       <TouchableOpacity
@@ -906,17 +949,8 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
         selected={paymentMethod}
         onSelect={setPaymentMethod}
         avaxPrice={avaxPriceDisplay}
+        usdPrice="0.08"
       />
-
-      {/* Price Info */}
-      <View style={styles.priceBox}>
-        <Text style={styles.priceLabel}>
-          Cost: {paymentMethod === 'USDC' ? '$0.08 USDC' : `~${avaxPriceDisplay || '0.006'} AVAX`}
-        </Text>
-        <Text style={styles.priceHint}>
-          {selectedModels.length} models + analysis {paymentMethod === 'USDC' ? '(gas free)' : ''}
-        </Text>
-      </View>
 
       {/* Execute Button */}
       <TouchableOpacity
@@ -1260,17 +1294,8 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
         selected={paymentMethod}
         onSelect={setPaymentMethod}
         avaxPrice={avaxPriceDisplay}
+        usdPrice="0.15"
       />
-
-      {/* Price Info */}
-      <View style={styles.priceBox}>
-        <Text style={styles.priceLabel}>
-          Cost: {paymentMethod === 'USDC' ? '$0.15 USDC' : `~${avaxPriceDisplay || '0.012'} AVAX`}
-        </Text>
-        <Text style={styles.priceHint}>
-          {selectedModels.length} image{selectedModels.length !== 1 ? 's' : ''} {paymentMethod === 'USDC' ? '(gas free)' : ''}
-        </Text>
-      </View>
 
       {/* Execute Button */}
       <TouchableOpacity
