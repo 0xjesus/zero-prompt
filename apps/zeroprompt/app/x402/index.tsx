@@ -948,16 +948,16 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
           </View>
         </TouchableOpacity>
 
-        <View style={styles.navLinks}>
-          <TouchableOpacity onPress={() => router.push('/home')} style={styles.navLink}>
+        <View style={[styles.navLinks, !isDesktop && { gap: 4 }]}>
+          <TouchableOpacity onPress={() => router.push('/home')} style={[styles.navLink, !isDesktop && { paddingHorizontal: 8 }]}>
             <Home size={16} color="#888" />
             {isDesktop && <Text style={styles.navLinkText}>Home</Text>}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/')} style={styles.navLink}>
+          <TouchableOpacity onPress={() => router.push('/')} style={[styles.navLink, !isDesktop && { paddingHorizontal: 8 }]}>
             <MessageSquare size={16} color="#888" />
             {isDesktop && <Text style={styles.navLinkText}>Chat</Text>}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/reputation')} style={styles.navLink}>
+          <TouchableOpacity onPress={() => router.push('/reputation')} style={[styles.navLink, !isDesktop && { paddingHorizontal: 8 }]}>
             <Star size={16} color="#888" />
             {isDesktop && <Text style={styles.navLinkText}>Reputation</Text>}
           </TouchableOpacity>
@@ -975,11 +975,11 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
           {isConnected ? (
             <>
               <TouchableOpacity
-                style={styles.walletConnected}
+                style={[styles.walletConnected, !isDesktop && { paddingHorizontal: 8 }]}
                 onPress={() => setShowWalletMenu(true)}
               >
                 <View style={styles.walletDot} />
-                <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>
+                {isDesktop && <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>}
               </TouchableOpacity>
               <Modal
                 visible={showWalletMenu}
