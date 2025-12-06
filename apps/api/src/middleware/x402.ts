@@ -283,6 +283,19 @@ async function handleEIP3009Payment(
 }
 
 /**
+ * Wait for transaction with retries (Avalanche can take a moment to index)
+ */
+async function waitForTransaction(provider: ethers.JsonRpcProvider, txHash: string, maxRetries = 10): Promise<ethers.TransactionResponse> {
+  for (let i = 0; i < maxRetries; i++) {
+    const tx = await provider.getTransaction(txHash);
+    if (tx) return tx;
+    console.log(`[x402] 🔺 Waiting for tx to be indexed... (attempt ${i + 1}/${maxRetries})`);
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+  }
+  throw new Error('Transaction not found after waiting. Please try again.');
+}
+
+/**
  * Handle native AVAX payment
  */
 async function handleNativePayment(
@@ -297,10 +310,11 @@ async function handleNativePayment(
 
   const provider = new ethers.JsonRpcProvider(AVALANCHE_RPC);
 
-  const tx = await provider.getTransaction(txHash);
-  if (!tx) throw new Error('Transaction not found');
+  // Wait for transaction to be indexed (with retries)
+  const tx = await waitForTransaction(provider, txHash);
 
-  const receipt = await provider.getTransactionReceipt(txHash);
+  // Wait for confirmation
+  const receipt = await tx.wait(1);
   if (!receipt || receipt.status !== 1) throw new Error('Transaction failed');
 
   if (tx.to?.toLowerCase() !== MERCHANT_ADDRESS.toLowerCase()) {
