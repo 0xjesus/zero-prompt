@@ -12,6 +12,8 @@
     "deploy:arbitrum": "hardhat run scripts/deploy.ts --network arbitrum",
     "deploy:polygon": "hardhat run scripts/deploy.ts --network polygon",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:reputation:avalanche": "hardhat run scripts/deploy-reputation.ts --network avalanche",
+    "deploy:reputation:fuji": "hardhat run scripts/deploy-reputation.ts --network avalancheFuji",
     "node": "hardhat node",
     "verify": "hardhat verify",
     "clean": "hardhat clean",
