@@ -285,14 +285,14 @@ async function handleEIP3009Payment(
 /**
  * Wait for transaction with retries (Avalanche can take a moment to index)
  */
-async function waitForTransaction(provider: ethers.JsonRpcProvider, txHash: string, maxRetries = 10): Promise<ethers.TransactionResponse> {
+async function waitForTransaction(provider: ethers.JsonRpcProvider, txHash: string, maxRetries = 30): Promise<ethers.TransactionResponse> {
   for (let i = 0; i < maxRetries; i++) {
     const tx = await provider.getTransaction(txHash);
     if (tx) return tx;
     console.log(`[x402] 🔺 Waiting for tx to be indexed... (attempt ${i + 1}/${maxRetries})`);
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between retries
   }
-  throw new Error('Transaction not found after waiting. Please try again.');
+  throw new Error('Transaction not found after 60s. Please try again.');
 }
 
 /**
