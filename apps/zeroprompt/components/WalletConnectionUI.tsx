@@ -371,6 +371,7 @@ interface WalletSidebarSectionProps {
   onLogout: () => void;
   currentBalance: number;
   onAddCredits: () => void;
+  onBuyWithCard?: () => void; // For users without wallet
 }
 
 export const WalletSidebarSection = ({
@@ -381,7 +382,8 @@ export const WalletSidebarSection = ({
   onConnectWallet,
   onLogout,
   currentBalance,
-  onAddCredits
+  onAddCredits,
+  onBuyWithCard
 }: WalletSidebarSectionProps) => {
   const [expanded, setExpanded] = useState(false);
   const expandAnim = useRef(new Animated.Value(0)).current;
@@ -451,6 +453,17 @@ export const WalletSidebarSection = ({
             </>
           )}
         </TouchableOpacity>
+
+        {/* Buy with Card - for non-crypto users */}
+        {onBuyWithCard && (
+          <TouchableOpacity
+            style={[styles.buyWithCardBtn, { borderColor: theme.success + '40' }]}
+            onPress={onBuyWithCard}
+          >
+            <CreditCard size={16} color={theme.success} />
+            <Text style={[styles.buyWithCardText, { color: theme.success }]}>Buy Credits with Card</Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.benefitsList}>
           <View style={styles.benefitItem}>
@@ -755,6 +768,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '700',
+    fontFamily: FONT_MONO
+  },
+  buyWithCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 10,
+    borderWidth: 1,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)'
+  },
+  buyWithCardText: {
+    fontSize: 13,
+    fontWeight: '600',
     fontFamily: FONT_MONO
   },
   benefitsList: {

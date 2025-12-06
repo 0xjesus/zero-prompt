@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback, lazy, Suspense } from "react";
 import {useRouter, useLocalSearchParams, usePathname} from "expo-router";
 import {
   ActivityIndicator,
@@ -44,6 +44,11 @@ import ModelSelectorModal from "../../components/ModelSelectorModal";
 import ImageGalleryModal from "../../components/ImageGalleryModal";
 import { VAULT_ADDRESS } from "../../lib/constants";
 import { API_URL } from "../../config/api";
+
+// Lazy load Thirdweb widget for web only (credit card purchases for non-wallet users)
+const ThirdwebWidgetsComponent = Platform.OS === "web"
+  ? lazy(() => import("../../components/ThirdwebWidgets.web"))
+  : null;
 
 type Model = {
   id: number;
@@ -557,7 +562,7 @@ const SourceList = ({ sources, theme, webSearchType }: any) => {
     );
 };
 
-const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal }: any) => {
+const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal, onBuyWithCard }: any) => {
   const slideAnim = useRef(new Animated.Value(isDesktop ? 0 : -300)).current;
   const [history, setHistory] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -771,6 +776,7 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
           onLogout={logout}
           currentBalance={currentBalance}
           onAddCredits={() => { onOpenDepositModal(); if(!isDesktop) onClose(); }}
+          onBuyWithCard={() => { onBuyWithCard?.(); if(!isDesktop) onClose(); }}
         />
       </SafeAreaView>
     </Animated.View>
@@ -1972,6 +1978,7 @@ export default function ChatScreen() {
   const [isSidebarOpen, setSidebarOpen] = useState(isDesktop);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [showImageGallery, setShowImageGallery] = useState(false);
+  const [showThirdwebWidget, setShowThirdwebWidget] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
@@ -2395,7 +2402,7 @@ export default function ChatScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <RNStatusBar barStyle="light-content" />
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} isDesktop={isDesktop} theme={theme} user={user} guestId={guestId} token={token} getHeaders={getHeaders} connectWallet={openWalletModal} startNewChat={startNewChat} isConnecting={isConnecting} isAuthenticating={isAuthenticating} router={router} currentBalance={currentBalance} logout={logout} onOpenGallery={() => setShowImageGallery(true)} onOpenDepositModal={openDepositModal} />
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} isDesktop={isDesktop} theme={theme} user={user} guestId={guestId} token={token} getHeaders={getHeaders} connectWallet={openWalletModal} startNewChat={startNewChat} isConnecting={isConnecting} isAuthenticating={isAuthenticating} router={router} currentBalance={currentBalance} logout={logout} onOpenGallery={() => setShowImageGallery(true)} onOpenDepositModal={openDepositModal} onBuyWithCard={() => setShowThirdwebWidget(true)} />
 
       {/* Overlay when sidebar is open on mobile (blocks content behind) */}
       {isSidebarOpen && !isDesktop && (
@@ -2872,6 +2879,24 @@ export default function ChatScreen() {
         migratedChats={migratedChats}
         onClearMigratedChats={clearMigratedChats}
       />
+
+      {/* Thirdweb Widget Modal - Credit Card for non-wallet users */}
+      {ThirdwebWidgetsComponent && (
+        <Suspense fallback={null}>
+          <ThirdwebWidgetsComponent
+            visible={showThirdwebWidget}
+            onClose={() => setShowThirdwebWidget(false)}
+            defaultAmount="5"
+            receiverAddress={VAULT_ADDRESS}
+            onSuccess={(data: any) => {
+              console.log('[ThirdwebWidget] Purchase success:', data);
+              setShowThirdwebWidget(false);
+              // Refresh balance after card purchase
+              setTimeout(() => refreshBilling(), 2000);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Migration Success Banner */}
       {migratedChats !== null && migratedChats > 0 && (
