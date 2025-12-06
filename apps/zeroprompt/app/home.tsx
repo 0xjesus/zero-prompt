@@ -172,16 +172,6 @@ export default function HomePage() {
                             <Trophy size={20} color="#fff" />
                         </TouchableOpacity>
                         <TouchableOpacity
-                            onPress={() => router.push('/models')}
-                            style={{
-                                padding: 10,
-                                borderRadius: 10,
-                                backgroundColor: 'rgba(255,255,255,0.1)',
-                            }}
-                        >
-                            <ImageIcon size={20} color="#fff" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
                             onPress={navigateToChat}
                             style={{
                                 backgroundColor: COLORS.neonGreen,

@@ -961,10 +961,6 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             <Star size={16} color="#888" />
             <Text style={styles.navLinkText}>Reputation</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/models')} style={styles.navLink}>
-            <ImageIcon size={16} color="#888" />
-            <Text style={styles.navLinkText}>Models</Text>
-          </TouchableOpacity>
 
           {/* Add Credits Buttons - Available for everyone */}
           {isConnected && (

@@ -722,31 +722,6 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
           <ChevronRight color="#E91E63" size={16} />
         </TouchableOpacity>
 
-        {/* Models Link */}
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            marginHorizontal: 16,
-            marginBottom: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            backgroundColor: 'rgba(0, 212, 255, 0.1)',
-            borderWidth: 1,
-            borderColor: 'rgba(0, 212, 255, 0.3)',
-            borderRadius: 10
-          }}
-          onPress={() => { router.push('/models'); if(!isDesktop) onClose(); }}
-        >
-          <Cpu color="#00D4FF" size={18} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#00D4FF', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>MODELS</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Browse 330+ AI models</Text>
-          </View>
-          <ChevronRight color="#00D4FF" size={16} />
-        </TouchableOpacity>
-
         {/* Conversation Search */}
         <View style={{paddingHorizontal: 16, marginBottom: 12}}>
             <View style={{

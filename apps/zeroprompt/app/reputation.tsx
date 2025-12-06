@@ -1409,9 +1409,6 @@ export default function ReputationPage() {
             <TouchableOpacity onPress={() => router.push('/x402')} style={styles.headerNavBtn}>
               <DollarSign size={18} color="#888" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/models')} style={styles.headerNavBtn}>
-              <ImageIcon size={18} color="#888" />
-            </TouchableOpacity>
           </View>
         </View>
       </LinearGradient>
