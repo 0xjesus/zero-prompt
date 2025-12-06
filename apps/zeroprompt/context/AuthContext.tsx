@@ -33,7 +33,18 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [guestId, setGuestId] = useState<string | null>(null);
+  // Initialize guestId synchronously to prevent 401 on first render
+  const [guestId, setGuestId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined' && Platform.OS === 'web') {
+      let gid = localStorage.getItem("guest_id");
+      if (!gid) {
+        gid = Math.random().toString(36).substring(2) + Date.now().toString(36);
+        localStorage.setItem("guest_id", gid);
+      }
+      return gid;
+    }
+    return null;
+  });
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [migratedChats, setMigratedChats] = useState<number | null>(null);
@@ -47,16 +58,9 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
   const { signMessageAsync } = useSignMessage();
   const { open: openAppKit } = useAppKit();
 
-  // Initialize guest ID on mount
+  // Restore session on mount
   useEffect(() => {
     if (Platform.OS !== "web") return;
-
-    let gid = localStorage.getItem("guest_id");
-    if (!gid) {
-      gid = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      localStorage.setItem("guest_id", gid);
-    }
-    setGuestId(gid);
 
     // Try to restore session
     const savedToken = localStorage.getItem("session_token");
