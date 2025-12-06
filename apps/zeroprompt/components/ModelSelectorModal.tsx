@@ -32,9 +32,14 @@ type Model = {
         input_modalities?: string[];
         output_modalities?: string[];
     };
+    // ERC-8004 Reputation data
+    reputation?: {
+        totalRatings: number;
+        averageScore: number; // 0-5 scale
+    } | null;
 };
 
-type Category = 'all' | 'chat' | 'image' | 'reasoning' | 'vision' | 'free';
+type Category = 'all' | 'chat' | 'image' | 'reasoning' | 'vision' | 'free' | 'top-rated';
 
 interface ModelSelectorModalProps {
     visible: boolean;
@@ -104,6 +109,34 @@ const CapBadge = ({ icon: Icon, color, small }: { icon: any; color: string; smal
         <Icon size={small ? 10 : 12} color={color} />
     </View>
 );
+
+// ERC-8004 Reputation Display
+const ReputationBadge = ({ reputation }: { reputation: Model['reputation'] }) => {
+    if (!reputation || reputation.totalRatings === 0) return null;
+
+    const score = reputation.averageScore;
+    const color = score >= 4.5 ? '#FFD700' : score >= 4 ? '#FFC107' : score >= 3 ? '#FF9800' : '#9E9E9E';
+
+    return (
+        <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: `${color}15`,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 8,
+            marginLeft: 6,
+        }}>
+            <Star size={10} color={color} fill={color} />
+            <Text style={{ color, fontSize: 10, fontWeight: '700', marginLeft: 2 }}>
+                {score.toFixed(1)}
+            </Text>
+            <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9, marginLeft: 2 }}>
+                ({reputation.totalRatings})
+            </Text>
+        </View>
+    );
+};
 
 const ModelCard = ({
     model,
@@ -184,11 +217,12 @@ const ModelCard = ({
 
             <View style={{ flex: 1, marginLeft: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
                         {displayName}
                     </Text>
+                    <ReputationBadge reputation={model.reputation} />
                     {isFree && (
-                        <View style={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 }}>
+                        <View style={{ backgroundColor: 'rgba(76, 175, 80, 0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 6 }}>
                             <Text style={{ color: '#4CAF50', fontSize: 9, fontWeight: '700' }}>FREE</Text>
                         </View>
                     )}
@@ -411,11 +445,27 @@ export default function ModelSelectorModal({
                         return isVisionModel(m);
                     case 'free':
                         return (m.publicPricingPrompt || 0) === 0;
+                    case 'top-rated':
+                        // Only models with ratings >= 3.5 and at least 2 ratings
+                        return m.reputation && m.reputation.totalRatings >= 2 && m.reputation.averageScore >= 3.5;
                     case 'chat':
                     default:
                         return !isImageGenerator(m) && !isThinkingModel(m) && !isVisionModel(m);
                 }
             });
+
+            // Sort by reputation for top-rated category
+            if (activeCategory === 'top-rated') {
+                filtered = filtered.sort((a, b) => {
+                    const aScore = a.reputation?.averageScore || 0;
+                    const bScore = b.reputation?.averageScore || 0;
+                    if (bScore !== aScore) return bScore - aScore;
+                    // Secondary sort by number of ratings
+                    const aRatings = a.reputation?.totalRatings || 0;
+                    const bRatings = b.reputation?.totalRatings || 0;
+                    return bRatings - aRatings;
+                });
+            }
         }
 
         const favModels = filtered.filter(m => favorites.includes(m.openrouterId || ''));
@@ -436,6 +486,7 @@ export default function ModelSelectorModal({
 
     const categoryFilters: { id: Category; label: string; icon: any; color: string }[] = [
         { id: 'all', label: 'All', icon: Layers, color: theme.primary },
+        { id: 'top-rated', label: 'Top Rated', icon: Star, color: '#FFD700' },
         { id: 'chat', label: 'Chat', icon: Sparkles, color: '#00BCD4' },
         { id: 'image', label: 'Image', icon: PenTool, color: '#E91E63' },
         { id: 'reasoning', label: 'Thinking', icon: Brain, color: '#9C27B0' },

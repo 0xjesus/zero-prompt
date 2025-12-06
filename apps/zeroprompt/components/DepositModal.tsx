@@ -17,6 +17,11 @@ const DepositWidgetComponent = Platform.OS === "web"
   ? lazy(() => import("./DepositWidget.web").then(m => ({ default: m.DepositWidget })))
   : null;
 
+// Lazy load Thirdweb widget for web only (credit card purchases)
+const ThirdwebWidgetsComponent = Platform.OS === "web"
+  ? lazy(() => import("./ThirdwebWidgets.web"))
+  : null;
+
 // Types
 interface DepositModalProps {
   visible: boolean;
@@ -70,6 +75,7 @@ export default function DepositModal({
   const [selectedAmount, setSelectedAmount] = useState<string>("1"); // Default to $1
   const [isProcessing, setIsProcessing] = useState(false);
   const [showWidget, setShowWidget] = useState(false);
+  const [showThirdwebWidget, setShowThirdwebWidget] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [depositSuccess, setDepositSuccess] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -332,9 +338,40 @@ export default function DepositModal({
             <Text style={[styles.footerText, { color: theme.textMuted }]}>
               Secure & Non-custodial - Avalanche C-Chain
             </Text>
+            {/* Credit Card Option for non-web3 users */}
+            {!depositSuccess && !isVerifying && (
+              <TouchableOpacity
+                style={styles.cardPaymentBtn}
+                onPress={() => setShowThirdwebWidget(true)}
+              >
+                <CreditCard size={16} color="#00FF41" />
+                <Text style={styles.cardPaymentText}>No crypto? Buy with card</Text>
+                <ChevronRight size={16} color="#00FF41" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
+
+      {/* Thirdweb Widget Modal (Credit Card Purchases) */}
+      {ThirdwebWidgetsComponent && (
+        <Suspense fallback={null}>
+          <ThirdwebWidgetsComponent
+            visible={showThirdwebWidget}
+            onClose={() => setShowThirdwebWidget(false)}
+            defaultAmount={selectedAmount}
+            receiverAddress={vaultAddress}
+            onSuccess={(data: any) => {
+              console.log('[DepositModal] Thirdweb purchase success:', data);
+              setShowThirdwebWidget(false);
+              // Refresh balance after card purchase
+              if (onRefreshBalance) {
+                setTimeout(() => onRefreshBalance(), 2000);
+              }
+            }}
+          />
+        </Suspense>
+      )}
     </Modal>
   );
 }
@@ -603,5 +640,23 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 16,
     marginBottom: 8,
+  },
+  cardPaymentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "rgba(0, 255, 65, 0.1)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(0, 255, 65, 0.3)",
+  },
+  cardPaymentText: {
+    color: "#00FF41",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

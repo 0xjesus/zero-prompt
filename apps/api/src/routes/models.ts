@@ -7,10 +7,38 @@ export const modelsRouter = Router();
 modelsRouter.get("/", async (_req, res) => {
   const models = await prisma.model.findMany({
     where: { isActive: true },
-    orderBy: [{ displayPriority: "desc" }, { name: "asc" }]
+    orderBy: [{ displayPriority: "desc" }, { name: "asc" }],
   });
 
-  res.json({ models });
+  // Try to get reputation data (gracefully handle if tables don't exist yet)
+  let reputationMap: Record<number, { totalRatings: number; averageScore: number }> = {};
+  try {
+    const reputations = await (prisma as any).modelReputationCache?.findMany?.({
+      select: {
+        modelId: true,
+        totalRatings: true,
+        averageScore: true,
+      },
+    });
+    if (reputations) {
+      for (const rep of reputations) {
+        reputationMap[rep.modelId] = {
+          totalRatings: rep.totalRatings,
+          averageScore: Number(rep.averageScore),
+        };
+      }
+    }
+  } catch {
+    // Reputation tables not yet migrated, continue without reputation data
+  }
+
+  // Transform to include reputation
+  const modelsWithReputation = models.map((model) => ({
+    ...model,
+    reputation: reputationMap[model.id] || null,
+  }));
+
+  res.json({ models: modelsWithReputation });
 });
 
 modelsRouter.post("/sync", async (_req, res) => {

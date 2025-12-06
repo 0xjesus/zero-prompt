@@ -35,6 +35,8 @@ model Model {
   updatedAt          DateTime @updatedAt
 
   usersDefaultModel  User[]
+  ratings            ModelRating[]
+  reputationCache    ModelReputationCache?
 }
 
 model User {
@@ -48,12 +50,13 @@ model User {
   sessionExpiresAt DateTime? @map("session_expires_at")
   defaultModelId   Int?      @map("default_model_id")
   defaultModel     Model?    @relation(fields: [defaultModelId], references: [id])
-  
+
   // Freemium / Stats
   messageCount     Int       @default(0) @map("message_count")
   isPremium        Boolean   @default(false) @map("is_premium")
 
   conversations    Conversation[]
+  modelRatings     ModelRating[]
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -141,4 +144,60 @@ model X402Payment {
   @@index([status])
   @@index([createdAt])
   @@map("x402_payments")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ERC-8004 Model Reputation System
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ModelRating {
+  id            Int      @id @default(autoincrement())
+  modelId       Int      @map("model_id")
+  model         Model    @relation(fields: [modelId], references: [id])
+  userId        Int      @map("user_id")
+  user          User     @relation(fields: [userId], references: [id])
+
+  // Rating data (ERC-8004 compliant)
+  score         Int      // 1-5 stars
+  tag1          String?  // Primary tag: "quality", "speed", "accuracy", "value"
+  tag2          String?  // Secondary tag (optional)
+  comment       String?  @db.Text // Optional review comment
+
+  // Blockchain sync status
+  txHash        String?  @unique @map("tx_hash") // When synced to chain
+  syncedAt      DateTime? @map("synced_at")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([modelId, userId]) // One rating per user per model
+  @@index([modelId])
+  @@index([userId])
+  @@index([score])
+  @@index([tag1])
+  @@map("model_ratings")
+}
+
+model ModelReputationCache {
+  id                Int      @id @default(autoincrement())
+  modelId           Int      @unique @map("model_id")
+  model             Model    @relation(fields: [modelId], references: [id])
+
+  // Aggregate stats (cached for performance)
+  totalRatings      Int      @default(0) @map("total_ratings")
+  sumScores         Int      @default(0) @map("sum_scores")
+  averageScore      Decimal  @default(0) @map("average_score") @db.Decimal(3, 2) // e.g., 4.50
+  fiveStarCount     Int      @default(0) @map("five_star_count")
+  fourStarCount     Int      @default(0) @map("four_star_count")
+  threeStarCount    Int      @default(0) @map("three_star_count")
+  twoStarCount      Int      @default(0) @map("two_star_count")
+  oneStarCount      Int      @default(0) @map("one_star_count")
+
+  // Last blockchain sync
+  lastSyncedBlock   Int?     @map("last_synced_block")
+  lastSyncedAt      DateTime? @map("last_synced_at")
+
+  updatedAt         DateTime @updatedAt
+
+  @@map("model_reputation_cache")
 }

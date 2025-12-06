@@ -9,6 +9,7 @@ import { storageRouter } from "./routes/storage";
 import { adminRouter } from "./routes/admin";
 import { billingRouter } from "./routes/billing";
 import { agentRouter } from "./routes/agent";
+import reputationRouter from "./routes/reputation";
 
 export function createApp() {
   const app = express();
@@ -29,6 +30,7 @@ export function createApp() {
   app.use("/admin", adminRouter);
   app.use("/billing", billingRouter);
   app.use("/agent", agentRouter);
+  app.use("/reputation", reputationRouter);
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error("Unhandled error", err);
