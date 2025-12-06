@@ -15,11 +15,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAccount, useWalletClient, useSwitchChain, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import {
   Star, ArrowLeft, Trophy, Users, ExternalLink,
   Home, Cpu, X, Check, Sparkles, Link2, AlertCircle,
   ChevronRight, Info, Zap, Award, TrendingUp, Search,
-  MessageSquare, Database, Shield
+  MessageSquare, Database, Shield, Wallet, DollarSign, Image as ImageIcon, Globe
 } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -28,12 +29,13 @@ import {
   fetchModelReputation,
   fetchUserRating,
   fetchTotalRatingsCount,
-  submitRating,
   MODEL_REPUTATION_REGISTRY_ADDRESS,
+  MODEL_REPUTATION_ABI,
   AVALANCHE_CHAIN_ID,
   OnChainReputation
 } from '../lib/reputationContract';
-import { ethers } from 'ethers';
+import { WalletConnectModal, WalletSidebarSection } from '../components/WalletConnectionUI';
+import { useBilling } from '../context/BillingContext';
 
 const FONT_MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 const SNOWTRACE_URL = `https://snowtrace.io/address/${MODEL_REPUTATION_REGISTRY_ADDRESS}`;
@@ -66,7 +68,7 @@ const RATING_LABELS: Record<number, { label: string; emoji: string; color: strin
   2: { label: 'Fair', emoji: '😐', color: '#F97316', description: 'Below average' },
   3: { label: 'Good', emoji: '🙂', color: '#EAB308', description: 'Meets expectations' },
   4: { label: 'Great', emoji: '😊', color: '#22C55E', description: 'Exceeds expectations' },
-  5: { label: 'Excellent', emoji: '🤩', color: '#8B5CF6', description: 'Highly recommended' },
+  5: { label: 'Excellent', emoji: '🤩', color: '#00FF41', description: 'Highly recommended' },
 };
 
 // Tag Options
@@ -170,7 +172,7 @@ const stepperStyles = StyleSheet.create({
   },
   stepCurrent: {
     transform: [{ scale: 1.1 }],
-    shadowColor: '#8B5CF6',
+    shadowColor: '#00FF41',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 10,
@@ -263,41 +265,20 @@ const HowItWorks = ({ onClose }: { onClose: () => void }) => (
 
         <View style={{ alignItems: 'center', marginBottom: 20 }}>
           <View style={styles.howItWorksIcon}>
-            <Info size={28} color="#8B5CF6" />
+            <Info size={28} color="#00FF41" />
           </View>
-          <Text style={styles.modalTitle}>Hybrid Reputation System</Text>
-        </View>
-
-        <View style={styles.hybridExplainer}>
-          <View style={styles.hybridItem}>
-            <View style={[styles.hybridIconWrap, { backgroundColor: 'rgba(0, 255, 65, 0.15)' }]}>
-              <Link2 size={18} color="#00FF41" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hybridItemTitle}>Rating (1-5 Stars)</Text>
-              <Text style={styles.hybridItemDesc}>Stored on-chain, immutable and verifiable on Avalanche</Text>
-            </View>
-          </View>
-          <View style={styles.hybridItem}>
-            <View style={[styles.hybridIconWrap, { backgroundColor: 'rgba(139, 92, 246, 0.15)' }]}>
-              <Database size={18} color="#8B5CF6" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hybridItemTitle}>Comments & Tags</Text>
-              <Text style={styles.hybridItemDesc}>Stored off-chain for gas efficiency, linked to your tx</Text>
-            </View>
-          </View>
+          <Text style={styles.modalTitle}>On-Chain Reputation</Text>
         </View>
 
         <View style={styles.howItWorksSteps}>
           <View style={styles.howItWorksStep}>
-            <View style={[styles.howItWorksStepNum, { backgroundColor: 'rgba(139, 92, 246, 0.2)' }]}>
-              <Text style={[styles.howItWorksStepNumText, { color: '#8B5CF6' }]}>1</Text>
+            <View style={[styles.howItWorksStepNum, { backgroundColor: 'rgba(0, 255, 65, 0.2)' }]}>
+              <Text style={[styles.howItWorksStepNumText, { color: '#00FF41' }]}>1</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.howItWorksStepTitle}>Select Rating & Add Comment</Text>
+              <Text style={styles.howItWorksStepTitle}>Select Rating</Text>
               <Text style={styles.howItWorksStepDesc}>
-                Choose 1-5 stars and optionally add a review comment
+                Choose 1-5 stars and optionally add a review
               </Text>
             </View>
           </View>
@@ -309,14 +290,14 @@ const HowItWorks = ({ onClose }: { onClose: () => void }) => (
             <View style={{ flex: 1 }}>
               <Text style={styles.howItWorksStepTitle}>Sign Transaction</Text>
               <Text style={styles.howItWorksStepDesc}>
-                Confirm in wallet - rating goes on-chain, comment saved to DB
+                Confirm in your wallet to submit on-chain
               </Text>
             </View>
           </View>
 
           <View style={styles.howItWorksStep}>
-            <View style={[styles.howItWorksStepNum, { backgroundColor: 'rgba(255, 215, 0, 0.2)' }]}>
-              <Text style={[styles.howItWorksStepNumText, { color: '#FFD700' }]}>3</Text>
+            <View style={[styles.howItWorksStepNum, { backgroundColor: 'rgba(0, 255, 65, 0.2)' }]}>
+              <Text style={[styles.howItWorksStepNumText, { color: '#00FF41' }]}>3</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.howItWorksStepTitle}>Permanent Record</Text>
@@ -377,13 +358,15 @@ const ModelCard = ({
   rank,
   onRate,
   onViewReviews,
-  isLoading
+  isLoading,
+  isDesktop
 }: {
   model: ModelWithReputation;
   rank: number;
   onRate: () => void;
   onViewReviews: () => void;
   isLoading?: boolean;
+  isDesktop?: boolean;
 }) => {
   const shortName = model.name.split(':').pop()?.trim() || model.name;
   const hasRatings = model.reputation && model.reputation.totalRatings > 0;
@@ -393,7 +376,8 @@ const ModelCard = ({
     <View style={[
       styles.modelCard,
       isTopRated && styles.modelCardTop,
-      model.userRating && styles.modelCardRated
+      model.userRating && styles.modelCardRated,
+      isDesktop && styles.modelCardDesktop
     ]}>
       <TouchableOpacity
         style={styles.modelCardMain}
@@ -420,7 +404,7 @@ const ModelCard = ({
             <Image source={{ uri: model.iconUrl }} style={styles.modelIcon} />
           ) : (
             <View style={styles.modelIconPlaceholder}>
-              <Cpu size={20} color="#8B5CF6" />
+              <Cpu size={20} color="#00FF41" />
             </View>
           )}
         </View>
@@ -450,11 +434,11 @@ const ModelCard = ({
               <Text style={styles.yourRatingText}>{model.userRating}★</Text>
             </View>
           ) : isLoading ? (
-            <ActivityIndicator size="small" color="#8B5CF6" />
+            <ActivityIndicator size="small" color="#00FF41" />
           ) : (
             <View style={styles.ratePrompt}>
-              <Star size={14} color="#8B5CF6" />
-              <ChevronRight size={14} color="#8B5CF6" />
+              <Star size={14} color="#00FF41" />
+              <ChevronRight size={14} color="#00FF41" />
             </View>
           )}
         </View>
@@ -495,7 +479,7 @@ const ReviewsModal = ({
           </TouchableOpacity>
 
           <View style={styles.reviewsModalHeader}>
-            <MessageSquare size={24} color="#8B5CF6" />
+            <MessageSquare size={24} color="#00FF41" />
             <Text style={styles.modalTitle}>Reviews</Text>
           </View>
           <Text style={styles.reviewsModelName}>{shortName}</Text>
@@ -522,6 +506,339 @@ const ReviewsModal = ({
   );
 };
 
+// Transaction Stepper Component
+const TransactionStepper = ({
+  step,
+  error,
+  txHash,
+  onClose,
+  onRetry
+}: {
+  step: 'idle' | 'switching' | 'signing' | 'confirming' | 'saving' | 'success' | 'error';
+  error: string | null;
+  txHash: string | null;
+  onClose: () => void;
+  onRetry: () => void;
+}) => {
+  const steps = [
+    { key: 'switching', label: 'Network', icon: Globe, desc: 'Connecting to Avalanche' },
+    { key: 'signing', label: 'Sign', icon: Shield, desc: 'Confirm in wallet' },
+    { key: 'confirming', label: 'Confirm', icon: Zap, desc: 'Transaction sent' },
+    { key: 'saving', label: 'Save', icon: Database, desc: 'Saving to server' },
+    { key: 'success', label: 'Done', icon: Check, desc: 'Rating recorded!' },
+  ];
+
+  const stepOrder = ['switching', 'signing', 'confirming', 'saving', 'success'];
+  const currentIndex = stepOrder.indexOf(step);
+
+  if (step === 'idle') return null;
+
+  return (
+    <View style={txStyles.overlay}>
+      <View style={txStyles.container}>
+        {step === 'error' ? (
+          <>
+            <View style={txStyles.errorIcon}>
+              <AlertCircle size={48} color="#EF4444" />
+            </View>
+            <Text style={txStyles.errorTitle}>Transaction Failed</Text>
+            <Text style={txStyles.errorMsg}>{error}</Text>
+            <View style={txStyles.errorActions}>
+              <TouchableOpacity style={txStyles.retryBtn} onPress={onRetry}>
+                <Text style={txStyles.retryBtnText}>Try Again</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={txStyles.closeBtn} onPress={onClose}>
+                <Text style={txStyles.closeBtnText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : step === 'success' ? (
+          <>
+            <View style={txStyles.successIcon}>
+              <Check size={48} color="#00FF41" />
+            </View>
+            <Text style={txStyles.successTitle}>Rating Submitted!</Text>
+            <Text style={txStyles.successMsg}>Your rating has been permanently recorded on the Avalanche blockchain.</Text>
+            {txHash && (
+              <TouchableOpacity
+                style={txStyles.txLink}
+                onPress={() => {
+                  if (Platform.OS === 'web') {
+                    window.open(`https://snowtrace.io/tx/${txHash}`, '_blank');
+                  }
+                }}
+              >
+                <ExternalLink size={14} color="#00FF41" />
+                <Text style={txStyles.txLinkText}>View on Snowtrace</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={txStyles.doneBtn} onPress={onClose}>
+              <Text style={txStyles.doneBtnText}>Done</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={txStyles.title}>Processing Transaction</Text>
+            <View style={txStyles.stepsContainer}>
+              {steps.map((s, i) => {
+                const isActive = s.key === step;
+                const isComplete = currentIndex > i;
+                const IconComponent = s.icon;
+
+                return (
+                  <View key={s.key} style={txStyles.stepRow}>
+                    <View style={[
+                      txStyles.stepIcon,
+                      isActive && txStyles.stepIconActive,
+                      isComplete && txStyles.stepIconComplete
+                    ]}>
+                      {isComplete ? (
+                        <Check size={20} color="#00FF41" />
+                      ) : isActive ? (
+                        <ActivityIndicator size="small" color="#00FF41" />
+                      ) : (
+                        <IconComponent size={20} color="rgba(255,255,255,0.3)" />
+                      )}
+                    </View>
+                    <View style={txStyles.stepContent}>
+                      <Text style={[
+                        txStyles.stepLabel,
+                        isActive && txStyles.stepLabelActive,
+                        isComplete && txStyles.stepLabelComplete
+                      ]}>
+                        {s.label}
+                      </Text>
+                      <Text style={[
+                        txStyles.stepDesc,
+                        isActive && txStyles.stepDescActive
+                      ]}>
+                        {s.desc}
+                      </Text>
+                    </View>
+                    {i < steps.length - 1 && (
+                      <View style={[
+                        txStyles.stepLine,
+                        isComplete && txStyles.stepLineComplete
+                      ]} />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={txStyles.waitText}>Please don't close this window...</Text>
+          </>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const txStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    zIndex: 100,
+  },
+  container: {
+    backgroundColor: '#0a0a0f',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    maxWidth: 380,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.2)',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 28,
+    fontFamily: FONT_MONO,
+  },
+  stepsContainer: {
+    marginBottom: 20,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    position: 'relative',
+  },
+  stepIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  stepIconActive: {
+    borderColor: '#00FF41',
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
+  },
+  stepIconComplete: {
+    borderColor: '#00FF41',
+    backgroundColor: 'rgba(0, 255, 65, 0.2)',
+  },
+  stepContent: {
+    marginLeft: 14,
+    flex: 1,
+  },
+  stepLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.4)',
+    fontFamily: FONT_MONO,
+  },
+  stepLabelActive: {
+    color: '#00FF41',
+  },
+  stepLabelComplete: {
+    color: '#00FF41',
+  },
+  stepDesc: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.3)',
+    marginTop: 2,
+  },
+  stepDescActive: {
+    color: 'rgba(255,255,255,0.6)',
+  },
+  stepLine: {
+    position: 'absolute',
+    left: 21,
+    top: 46,
+    width: 2,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  stepLineComplete: {
+    backgroundColor: '#00FF41',
+  },
+  waitText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  // Success
+  successIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#00FF41',
+  },
+  successTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#00FF41',
+    textAlign: 'center',
+    marginBottom: 12,
+    fontFamily: FONT_MONO,
+  },
+  successMsg: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  txLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 24,
+    padding: 10,
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
+    borderRadius: 8,
+  },
+  txLinkText: {
+    fontSize: 13,
+    color: '#00FF41',
+    fontFamily: FONT_MONO,
+  },
+  doneBtn: {
+    backgroundColor: '#00FF41',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  doneBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+    fontFamily: FONT_MONO,
+  },
+  // Error
+  errorIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#EF4444',
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: 12,
+    fontFamily: FONT_MONO,
+  },
+  errorMsg: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  errorActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  retryBtn: {
+    flex: 1,
+    backgroundColor: '#00FF41',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  retryBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000',
+  },
+  closeBtn: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  closeBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+});
+
 // Rate Modal with Comment
 const RateModal = ({
   visible,
@@ -530,7 +847,11 @@ const RateModal = ({
   existingComment,
   onClose,
   onSubmit,
-  isSubmitting
+  isSubmitting,
+  submitStep,
+  submitError,
+  submitTxHash,
+  onResetSubmit
 }: {
   visible: boolean;
   model: Model | null;
@@ -539,6 +860,10 @@ const RateModal = ({
   onClose: () => void;
   onSubmit: (score: number, comment: string, tag: string) => void;
   isSubmitting: boolean;
+  submitStep: 'idle' | 'switching' | 'signing' | 'confirming' | 'saving' | 'success' | 'error';
+  submitError: string | null;
+  submitTxHash: string | null;
+  onResetSubmit: () => void;
 }) => {
   const [selectedScore, setSelectedScore] = useState(existingRating || 0);
   const [comment, setComment] = useState(existingComment || '');
@@ -575,7 +900,7 @@ const RateModal = ({
                 {model.iconUrl ? (
                   <Image source={{ uri: model.iconUrl }} style={styles.rateModalIcon} />
                 ) : (
-                  <Cpu size={24} color="#8B5CF6" />
+                  <Cpu size={24} color="#00FF41" />
                 )}
               </View>
               <Text style={styles.rateModalTitle}>
@@ -593,7 +918,7 @@ const RateModal = ({
             {/* Comment Input */}
             <View style={styles.commentSection}>
               <View style={styles.commentHeader}>
-                <MessageSquare size={14} color="#8B5CF6" />
+                <MessageSquare size={14} color="#00FF41" />
                 <Text style={styles.commentLabel}>Review Comment (Optional)</Text>
               </View>
               <TextInput
@@ -635,15 +960,11 @@ const RateModal = ({
               </View>
             </View>
 
-            {/* Info Boxes */}
+            {/* Info Box */}
             <View style={styles.infoBoxes}>
-              <View style={styles.infoBox}>
+              <View style={[styles.infoBox, { flex: 1 }]}>
                 <Link2 size={12} color="#00FF41" />
-                <Text style={styles.infoBoxText}>Rating stored on-chain</Text>
-              </View>
-              <View style={styles.infoBox}>
-                <Database size={12} color="#8B5CF6" />
-                <Text style={styles.infoBoxText}>Comment saved to DB</Text>
+                <Text style={styles.infoBoxText}>Rating permanently stored on-chain (Avalanche)</Text>
               </View>
             </View>
 
@@ -682,10 +1003,21 @@ const RateModal = ({
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={isSubmitting}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Transaction Stepper Overlay */}
+          {submitStep !== 'idle' && (
+            <TransactionStepper
+              step={submitStep}
+              error={submitError}
+              txHash={submitTxHash}
+              onClose={submitStep === 'success' ? onClose : onResetSubmit}
+              onRetry={onResetSubmit}
+            />
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -693,11 +1025,28 @@ const RateModal = ({
 };
 
 export default function ReputationPage() {
-  useTheme();
-  const { user, getHeaders } = useAuth();
+  const { theme } = useTheme();
+  const {
+    user,
+    getHeaders,
+    openWalletModal,
+    isConnecting,
+    isAuthenticating,
+    connectionError,
+    migratedChats,
+    clearMigratedChats,
+    logout
+  } = useAuth();
+  const { currentBalance } = useBilling();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
+
+  // Wagmi hooks for wallet interaction
+  const { address, isConnected, chainId } = useAccount();
+  const { data: walletClient } = useWalletClient();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
 
   const [models, setModels] = useState<ModelWithReputation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -711,7 +1060,11 @@ export default function ReputationPage() {
   const [reviewsModel, setReviewsModel] = useState<Model | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStep, setSubmitStep] = useState<'idle' | 'switching' | 'signing' | 'confirming' | 'saving' | 'success' | 'error'>('idle');
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitTxHash, setSubmitTxHash] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'rated' | 'unrated'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [displayCount, setDisplayCount] = useState(30); // Pagination
   const MODELS_PER_PAGE = 30;
 
@@ -821,37 +1174,51 @@ export default function ReputationPage() {
 
   // Handle rating submission (hybrid: on-chain + API)
   const handleSubmitRating = async (score: number, comment: string, tag: string) => {
-    if (!selectedModel || !user?.walletAddress) {
-      if (Platform.OS === 'web') {
-        alert('Please connect your wallet to rate models.');
-      }
+    console.log('[Reputation] Starting rating submission...', { score, modelId: selectedModel?.id });
+
+    if (!selectedModel) {
+      setSubmitError('No model selected');
+      setSubmitStep('error');
+      return;
+    }
+
+    if (!isConnected || !address) {
+      openWalletModal();
       return;
     }
 
     setIsSubmitting(true);
+    setSubmitStep('switching');
+    setSubmitError(null);
+    setSubmitTxHash(null);
 
     try {
-      // 1. Submit rating on-chain
-      if (typeof window === 'undefined' || !window.ethereum) {
-        throw new Error('No wallet detected. Please install MetaMask.');
+      // 1. Switch to Avalanche if needed
+      console.log('[Reputation] Current chain:', chainId);
+
+      if (chainId !== AVALANCHE_CHAIN_ID) {
+        console.log('[Reputation] Switching to Avalanche...');
+        await switchChainAsync({ chainId: AVALANCHE_CHAIN_ID });
       }
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const network = await provider.getNetwork();
+      // 2. Request signature
+      setSubmitStep('signing');
+      console.log('[Reputation] Submitting rating on-chain...');
 
-      if (Number(network.chainId) !== AVALANCHE_CHAIN_ID) {
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0xa86a' }],
-        });
-      }
+      const txHash = await writeContractAsync({
+        address: MODEL_REPUTATION_REGISTRY_ADDRESS as `0x${string}`,
+        abi: MODEL_REPUTATION_ABI,
+        functionName: 'rateModel',
+        args: [BigInt(selectedModel.id), score],
+        chainId: AVALANCHE_CHAIN_ID,
+      });
 
-      const signer = await provider.getSigner();
-      const txHash = await submitRating(selectedModel.id, score, signer);
-
+      setSubmitTxHash(txHash);
+      setSubmitStep('confirming');
       console.log('[Reputation] On-chain rating submitted, tx:', txHash);
 
-      // 2. Save comment to API (off-chain)
+      // 3. Save comment to API (off-chain)
+      setSubmitStep('saving');
       try {
         await fetch(`${API_URL}/reputation/rate`, {
           method: 'POST',
@@ -870,36 +1237,69 @@ export default function ReputationPage() {
         console.log('[Reputation] Comment saved to API');
       } catch (apiErr) {
         console.warn('[Reputation] Failed to save comment to API:', apiErr);
-        // Don't fail the whole operation if API save fails
       }
+
+      // 4. Success!
+      setSubmitStep('success');
 
       // Update local state
       setModels(prev => prev.map(m =>
         m.id === selectedModel.id ? { ...m, userRating: score, userComment: comment } : m
       ));
 
-      setShowRateModal(false);
-      setSelectedModel(null);
+      // Refresh on-chain data and stats after a delay
+      setTimeout(async () => {
+        try {
+          // Refresh the rated model's data
+          const updated = await fetchOnChainData(selectedModel, address);
+          setModels(prev => prev.map(m =>
+            m.id === selectedModel.id
+              ? { ...m, reputation: updated.reputation, userRating: updated.userRating }
+              : m
+          ));
 
-      // Refresh on-chain data
-      const updated = await fetchOnChainData(selectedModel, user.walletAddress);
-      setModels(prev => prev.map(m =>
-        m.id === selectedModel.id
-          ? { ...m, reputation: updated.reputation, userRating: updated.userRating }
-          : m
-      ));
+          // Refresh total on-chain ratings count
+          const newTotal = await fetchTotalRatingsCount();
+          setTotalOnChainRatings(newTotal);
+          console.log('[Reputation] Stats refreshed, total ratings:', newTotal);
+        } catch (e) {
+          console.warn('[Reputation] Failed to refresh on-chain data:', e);
+        }
+      }, 2000);
 
-      if (Platform.OS === 'web') {
-        alert(`Success! Your ${score}-star rating has been recorded on-chain.`);
-      }
     } catch (err: any) {
       console.error('[Reputation] Failed to submit rating:', err);
-      if (Platform.OS === 'web') {
-        alert(err.message || 'Failed to submit rating');
+      setSubmitStep('error');
+
+      // Better error messages
+      let errorMsg = 'Failed to submit rating';
+      if (err.message?.includes('rejected') || err.message?.includes('denied') || err.code === 4001) {
+        errorMsg = 'Transaction was rejected by user.';
+      } else if (err.message?.includes('insufficient')) {
+        errorMsg = 'Insufficient AVAX for gas fees.';
+      } else if (err.shortMessage) {
+        errorMsg = err.shortMessage;
+      } else if (err.message) {
+        errorMsg = err.message;
       }
-    } finally {
-      setIsSubmitting(false);
+
+      setSubmitError(errorMsg);
     }
+  };
+
+  // Reset submission state
+  const resetSubmitState = () => {
+    setSubmitStep('idle');
+    setSubmitError(null);
+    setSubmitTxHash(null);
+    setIsSubmitting(false);
+  };
+
+  // Close modal after success
+  const handleCloseAfterSuccess = () => {
+    setShowRateModal(false);
+    setSelectedModel(null);
+    resetSubmitState();
   };
 
   // Handle view reviews
@@ -929,6 +1329,16 @@ export default function ReputationPage() {
   // Sort and filter models
   const sortedModels = [...models]
     .filter(m => {
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        const modelName = m.name.toLowerCase();
+        const shortName = m.name.split(':').pop()?.toLowerCase() || '';
+        if (!modelName.includes(query) && !shortName.includes(query) && !m.openrouterId.toLowerCase().includes(query)) {
+          return false;
+        }
+      }
+      // Tab filter
       if (filter === 'rated' && (!m.reputation || m.reputation.totalRatings === 0)) return false;
       if (filter === 'unrated' && m.reputation && m.reputation.totalRatings > 0) return false;
       return true;
@@ -955,12 +1365,12 @@ export default function ReputationPage() {
     <View style={styles.container}>
       {/* Header */}
       <LinearGradient
-        colors={['rgba(0, 255, 65, 0.15)', 'rgba(139, 92, 246, 0.1)', 'transparent']}
+        colors={['rgba(0, 255, 65, 0.15)', 'rgba(0, 255, 65, 0.05)', 'transparent']}
         style={styles.headerGradient}
       >
         <View style={[styles.header, isDesktop && styles.headerDesktop]}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <TouchableOpacity onPress={() => router.push('/home')} style={styles.backBtn}>
               <ArrowLeft size={20} color="#fff" />
             </TouchableOpacity>
             <View>
@@ -977,7 +1387,7 @@ export default function ReputationPage() {
                 }}
               >
                 <Link2 size={10} color="#00FF41" />
-                <Text style={styles.onChainHeaderText}>HYBRID</Text>
+                <Text style={styles.onChainHeaderText}>ON-CHAIN</Text>
                 <ExternalLink size={8} color="#00FF41" />
               </TouchableOpacity>
             </View>
@@ -988,86 +1398,216 @@ export default function ReputationPage() {
               onPress={() => setShowHowItWorks(true)}
               style={styles.helpBtn}
             >
-              <Info size={18} color="#8B5CF6" />
+              <Info size={18} color="#00FF41" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/home')} style={styles.headerNavBtn}>
               <Home size={18} color="#888" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/chat/new')} style={styles.headerNavBtn}>
+              <MessageSquare size={18} color="#888" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/x402')} style={styles.headerNavBtn}>
+              <DollarSign size={18} color="#888" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/models')} style={styles.headerNavBtn}>
+              <ImageIcon size={18} color="#888" />
             </TouchableOpacity>
           </View>
         </View>
       </LinearGradient>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Stats Cards */}
-        <View style={[styles.statsSection, isDesktop && styles.statsSectionDesktop]}>
-          <View style={styles.statCard}>
-            <View style={styles.statIconWrap}>
-              <Cpu size={18} color="#8B5CF6" />
-            </View>
-            <Text style={styles.statValue}>{models.length}</Text>
-            <Text style={styles.statLabel}>AI Models</Text>
-          </View>
+      {/* Desktop Layout: 2 columns / Mobile: single column */}
+      <View style={[styles.mainLayout, isDesktop && styles.mainLayoutDesktop]}>
+        {/* Sidebar - Only visible on desktop */}
+        {isDesktop && (
+          <View style={styles.sidebar}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Wallet Section */}
+              <WalletSidebarSection
+                user={user}
+                theme={theme}
+                isConnecting={isConnecting}
+                isAuthenticating={isAuthenticating}
+                onConnectWallet={openWalletModal}
+                onLogout={logout}
+                currentBalance={currentBalance || 0}
+                onAddCredits={() => router.push('/')}
+              />
 
-          <View style={styles.statCard}>
-            <View style={[styles.statIconWrap, { backgroundColor: 'rgba(0, 255, 65, 0.1)' }]}>
-              <Link2 size={18} color="#00FF41" />
-            </View>
-            <Text style={styles.statValue}>{totalOnChainRatings}</Text>
-            <Text style={styles.statLabel}>On-Chain</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={[styles.statIconWrap, { backgroundColor: 'rgba(255, 215, 0, 0.1)' }]}>
-              <Star size={18} color="#FFD700" />
-            </View>
-            <Text style={styles.statValue}>{modelsWithRatings.length}</Text>
-            <Text style={styles.statLabel}>Rated</Text>
-          </View>
-
-          {user && (
-            <View style={styles.statCard}>
-              <View style={[styles.statIconWrap, { backgroundColor: 'rgba(34, 197, 94, 0.1)' }]}>
-                <Check size={18} color="#22C55E" />
+              {/* Stats in Sidebar for Desktop */}
+              <View style={styles.sidebarStats}>
+                <Text style={styles.sidebarStatsTitle}>Statistics</Text>
+                <View style={styles.sidebarStatRow}>
+                  <Cpu size={16} color="#00FF41" />
+                  <Text style={styles.sidebarStatLabel}>AI Models</Text>
+                  <Text style={styles.sidebarStatValue}>{models.length}</Text>
+                </View>
+                <View style={styles.sidebarStatRow}>
+                  <Link2 size={16} color="#00FF41" />
+                  <Text style={styles.sidebarStatLabel}>On-Chain Ratings</Text>
+                  <Text style={styles.sidebarStatValue}>{totalOnChainRatings}</Text>
+                </View>
+                <View style={styles.sidebarStatRow}>
+                  <Star size={16} color="#FFD700" />
+                  <Text style={styles.sidebarStatLabel}>Rated Models</Text>
+                  <Text style={styles.sidebarStatValue}>{modelsWithRatings.length}</Text>
+                </View>
+                {user?.walletAddress && (
+                  <View style={styles.sidebarStatRow}>
+                    <Check size={16} color="#22C55E" />
+                    <Text style={styles.sidebarStatLabel}>Your Votes</Text>
+                    <Text style={styles.sidebarStatValue}>{userRatedCount}</Text>
+                  </View>
+                )}
               </View>
-              <Text style={styles.statValue}>{userRatedCount}</Text>
-              <Text style={styles.statLabel}>Your Votes</Text>
+
+              {/* Filter Tabs in Sidebar for Desktop */}
+              <View style={styles.sidebarFilters}>
+                <Text style={styles.sidebarStatsTitle}>Filter</Text>
+                {(['all', 'rated', 'unrated'] as const).map((f) => (
+                  <TouchableOpacity
+                    key={f}
+                    style={[styles.sidebarFilterItem, filter === f && styles.sidebarFilterItemActive]}
+                    onPress={() => { setFilter(f); setDisplayCount(MODELS_PER_PAGE); }}
+                  >
+                    <Text style={[styles.sidebarFilterText, filter === f && styles.sidebarFilterTextActive]}>
+                      {f === 'all' ? 'All Models' : f === 'rated' ? 'Top Rated' : 'Unrated'}
+                    </Text>
+                    {filter === f && <ChevronRight size={16} color="#00FF41" />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Main Content */}
+        <ScrollView
+          style={[styles.content, isDesktop && styles.contentDesktop]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Mobile: Wallet Section - AT THE TOP */}
+          {!isDesktop && (
+            <View style={styles.walletSectionWrapper}>
+              <WalletSidebarSection
+                user={user}
+                theme={theme}
+                isConnecting={isConnecting}
+                isAuthenticating={isAuthenticating}
+                onConnectWallet={openWalletModal}
+                onLogout={logout}
+                currentBalance={currentBalance || 0}
+                onAddCredits={() => router.push('/')}
+              />
             </View>
           )}
-        </View>
 
-        {/* Filter Tabs */}
-        <View style={styles.filterSection}>
-          <View style={styles.filterTabs}>
-            {(['all', 'rated', 'unrated'] as const).map((f) => (
-              <TouchableOpacity
-                key={f}
-                style={[styles.filterTab, filter === f && styles.filterTabActive]}
-                onPress={() => { setFilter(f); setDisplayCount(MODELS_PER_PAGE); }}
-              >
-                <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
-                  {f === 'all' ? 'All' : f === 'rated' ? 'Top Rated' : 'Unrated'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          {/* Mobile: Stats Cards */}
+          {!isDesktop && (
+            <View style={styles.statsSection}>
+              <View style={styles.statCard}>
+                <View style={styles.statIconWrap}>
+                  <Cpu size={18} color="#00FF41" />
+                </View>
+                <Text style={styles.statValue}>{models.length}</Text>
+                <Text style={styles.statLabel}>AI Models</Text>
+              </View>
+              <View style={styles.statCard}>
+                <View style={[styles.statIconWrap, { backgroundColor: 'rgba(0, 255, 65, 0.1)' }]}>
+                  <Link2 size={18} color="#00FF41" />
+                </View>
+                <Text style={styles.statValue}>{totalOnChainRatings}</Text>
+                <Text style={styles.statLabel}>On-Chain</Text>
+              </View>
+              <View style={styles.statCard}>
+                <View style={[styles.statIconWrap, { backgroundColor: 'rgba(255, 215, 0, 0.1)' }]}>
+                  <Star size={18} color="#FFD700" />
+                </View>
+                <Text style={styles.statValue}>{modelsWithRatings.length}</Text>
+                <Text style={styles.statLabel}>Rated</Text>
+              </View>
+              {user?.walletAddress && (
+                <View style={styles.statCard}>
+                  <View style={[styles.statIconWrap, { backgroundColor: 'rgba(34, 197, 94, 0.1)' }]}>
+                    <Check size={18} color="#22C55E" />
+                  </View>
+                  <Text style={styles.statValue}>{userRatedCount}</Text>
+                  <Text style={styles.statLabel}>Your Votes</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Search Bar */}
+          <View style={[styles.searchSection, isDesktop && styles.searchSectionDesktop]}>
+            <View style={[styles.searchInputWrapper, isDesktop && styles.searchInputWrapperDesktop]}>
+              <Search size={20} color="rgba(255,255,255,0.4)" />
+              <TextInput
+                style={[styles.searchInput, isDesktop && styles.searchInputDesktop]}
+                placeholder="Search models by name, provider..."
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                value={searchQuery}
+                onChangeText={(text) => {
+                  setSearchQuery(text);
+                  setDisplayCount(MODELS_PER_PAGE);
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchQuery('');
+                    setDisplayCount(MODELS_PER_PAGE);
+                  }}
+                  style={styles.searchClearBtn}
+                >
+                  <X size={18} color="rgba(255,255,255,0.5)" />
+                </TouchableOpacity>
+              )}
+            </View>
+            {searchQuery.length > 0 && (
+              <Text style={styles.searchResultsCount}>
+                {sortedModels.length} {sortedModels.length === 1 ? 'result' : 'results'}
+              </Text>
+            )}
           </View>
-        </View>
 
-        {/* Models List */}
-        <View style={styles.modelsSection}>
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#8B5CF6" />
-              <Text style={styles.loadingText}>Loading reputation data...</Text>
-              <Text style={styles.loadingSubtext}>Fetching from blockchain & database</Text>
+          {/* Mobile: Filter Tabs */}
+          {!isDesktop && (
+            <View style={styles.filterSection}>
+              <View style={styles.filterTabs}>
+                {(['all', 'rated', 'unrated'] as const).map((f) => (
+                  <TouchableOpacity
+                    key={f}
+                    style={[styles.filterTab, filter === f && styles.filterTabActive]}
+                    onPress={() => { setFilter(f); setDisplayCount(MODELS_PER_PAGE); }}
+                  >
+                    <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
+                      {f === 'all' ? 'All' : f === 'rated' ? 'Top Rated' : 'Unrated'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
-          ) : sortedModels.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Search size={32} color="rgba(255,255,255,0.2)" />
-              <Text style={styles.emptyStateText}>No models found</Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.modelsList}>
+          )}
+
+          {/* Models Grid/List */}
+          <View style={[styles.modelsSection, isDesktop && styles.modelsSectionDesktop]}>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#00FF41" />
+                <Text style={styles.loadingText}>Loading reputation data...</Text>
+                <Text style={styles.loadingSubtext}>Fetching from blockchain & database</Text>
+              </View>
+            ) : sortedModels.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Search size={48} color="rgba(255,255,255,0.2)" />
+                <Text style={styles.emptyStateText}>No models found</Text>
+                <Text style={styles.emptyStateSubtext}>Try adjusting your search or filters</Text>
+              </View>
+            ) : (
+              <View style={[styles.modelsList, isDesktop && styles.modelsGrid]}>
                 {sortedModels.slice(0, displayCount).map((model) => {
                   const ratedIndex = modelsWithRatings.findIndex(m => m.id === model.id);
                   const rank = ratedIndex >= 0 ? ratedIndex + 1 : 0;
@@ -1079,44 +1619,21 @@ export default function ReputationPage() {
                       rank={rank}
                       onRate={() => handleOpenRateModal(model)}
                       onViewReviews={() => handleViewReviews(model)}
+                      isDesktop={isDesktop}
                     />
                   );
                 })}
               </View>
-
-            </>
-          )}
-        </View>
-
-        {/* CTA for non-connected users */}
-        {!user && (
-          <View style={styles.ctaSection}>
-            <LinearGradient
-              colors={['rgba(139, 92, 246, 0.15)', 'rgba(0, 255, 65, 0.08)']}
-              style={styles.ctaCard}
-            >
-              <Users size={28} color="#8B5CF6" />
-              <Text style={styles.ctaTitle}>Connect Wallet to Vote</Text>
-              <Text style={styles.ctaText}>
-                Rate AI models with on-chain verification and add your review
-              </Text>
-              <TouchableOpacity
-                style={styles.ctaButton}
-                onPress={() => router.push('/home')}
-              >
-                <Text style={styles.ctaButtonText}>Connect Wallet</Text>
-                <ChevronRight size={16} color="#000" />
-              </TouchableOpacity>
-            </LinearGradient>
+            )}
           </View>
-        )}
 
-        <View style={{ height: 100 }} />
-      </ScrollView>
+          <View style={{ height: 100 }} />
+        </ScrollView>
+      </View>
 
       {/* Sticky Load More Footer */}
       {!loading && sortedModels.length > 0 && (
-        <View style={styles.stickyFooter}>
+        <View style={[styles.stickyFooter, isDesktop && styles.stickyFooterDesktop]}>
           <View style={styles.stickyFooterContent}>
             <Text style={styles.paginationInfo}>
               {Math.min(displayCount, sortedModels.length)} / {sortedModels.length} models
@@ -1129,7 +1646,7 @@ export default function ReputationPage() {
                 <Text style={styles.loadMoreText}>
                   Load {Math.min(MODELS_PER_PAGE, sortedModels.length - displayCount)} More
                 </Text>
-                <ChevronRight size={16} color="#8B5CF6" />
+                <ChevronRight size={16} color="#00FF41" />
               </TouchableOpacity>
             ) : (
               <View style={styles.allLoadedBadge}>
@@ -1152,9 +1669,14 @@ export default function ReputationPage() {
           setSelectedModel(null);
           setSelectedModelRating(undefined);
           setSelectedModelComment(undefined);
+          resetSubmitState();
         }}
         onSubmit={handleSubmitRating}
         isSubmitting={isSubmitting}
+        submitStep={submitStep}
+        submitError={submitError}
+        submitTxHash={submitTxHash}
+        onResetSubmit={resetSubmitState}
       />
 
       {/* Reviews Modal */}
@@ -1171,6 +1693,18 @@ export default function ReputationPage() {
 
       {/* How It Works Modal */}
       {showHowItWorks && <HowItWorks onClose={() => setShowHowItWorks(false)} />}
+
+      {/* Wallet Connection Modal */}
+      <WalletConnectModal
+        visible={isConnecting || isAuthenticating}
+        onClose={() => {}}
+        theme={theme}
+        isConnecting={isConnecting}
+        isAuthenticating={isAuthenticating}
+        connectionError={connectionError}
+        migratedChats={migratedChats}
+        onClearMigratedChats={clearMigratedChats}
+      />
     </View>
   );
 }
@@ -1178,6 +1712,121 @@ export default function ReputationPage() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0A0A0F',
+  },
+  // Desktop Layout
+  mainLayout: {
+    flex: 1,
+    backgroundColor: '#0A0A0F',
+  },
+  mainLayoutDesktop: {
+    flexDirection: 'row',
+  },
+  sidebar: {
+    width: 320,
+    backgroundColor: '#0a0a0f',
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.06)',
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 80,
+  },
+  sidebarStats: {
+    marginTop: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  sidebarStatsTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 16,
+    fontFamily: FONT_MONO,
+  },
+  sidebarStatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+    gap: 10,
+  },
+  sidebarStatLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  sidebarStatValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: FONT_MONO,
+  },
+  sidebarFilters: {
+    marginTop: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  sidebarFilterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  sidebarFilterItemActive: {
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
+  },
+  sidebarFilterText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  sidebarFilterTextActive: {
+    color: '#00FF41',
+    fontWeight: '600',
+  },
+  contentDesktop: {
+    flex: 1,
+    paddingHorizontal: 32,
+    paddingTop: 16,
+    maxWidth: 1200,
+  },
+  searchSectionDesktop: {
+    paddingHorizontal: 0,
+    marginTop: 24,
+    maxWidth: 600,
+  },
+  searchInputWrapperDesktop: {
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+  },
+  searchInputDesktop: {
+    fontSize: 16,
+  },
+  modelsSectionDesktop: {
+    paddingHorizontal: 0,
+  },
+  modelsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 20,
+    paddingBottom: 20,
+    justifyContent: 'flex-start',
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 8,
     backgroundColor: '#0A0A0F',
   },
   headerGradient: {
@@ -1191,9 +1840,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   headerDesktop: {
-    maxWidth: 900,
+    maxWidth: 1400,
     alignSelf: 'center',
     width: '100%',
+    paddingHorizontal: 24,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -1241,11 +1891,54 @@ const styles = StyleSheet.create({
     fontFamily: FONT_MONO,
     letterSpacing: 1,
   },
+  connectWalletBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#00FF41',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  connectWalletBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+    fontFamily: FONT_MONO,
+  },
+  walletConnectedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.3)',
+  },
+  walletConnectedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#00FF41',
+  },
+  walletConnectedText: {
+    fontSize: 12,
+    color: '#00FF41',
+    fontFamily: FONT_MONO,
+    fontWeight: '600',
+  },
+  walletSectionWrapper: {
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 8,
+  },
   helpBtn: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1259,6 +1952,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    backgroundColor: '#0A0A0F',
   },
 
   // Stats
@@ -1267,7 +1961,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
     paddingHorizontal: 16,
-    marginTop: 8,
+    marginTop: 0,
   },
   statsSectionDesktop: {
     maxWidth: 900,
@@ -1288,7 +1982,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 7,
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
@@ -1306,10 +2000,98 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // Wallet Banner
+  walletBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: 'rgba(0, 255, 65, 0.08)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.2)',
+  },
+  walletBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  walletBannerIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: FONT_MONO,
+  },
+  walletBannerSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 2,
+  },
+  walletBannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#00FF41',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  walletBannerBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000',
+    fontFamily: FONT_MONO,
+  },
+
+  // Search
+  searchSection: {
+    paddingHorizontal: 16,
+    marginTop: 16,
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#fff',
+    fontFamily: FONT_MONO,
+    padding: 0,
+    margin: 0,
+  },
+  searchClearBtn: {
+    padding: 4,
+  },
+  searchResultsCount: {
+    fontSize: 12,
+    color: 'rgba(0, 255, 65, 0.8)',
+    marginTop: 8,
+    marginLeft: 4,
+    fontFamily: FONT_MONO,
+  },
+
   // Filters
   filterSection: {
     paddingHorizontal: 16,
-    marginTop: 16,
+    marginTop: 12,
   },
   filterTabs: {
     flexDirection: 'row',
@@ -1324,7 +2106,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   filterTabActive: {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    backgroundColor: 'rgba(0, 255, 65, 0.2)',
   },
   filterTabText: {
     fontSize: 13,
@@ -1332,7 +2114,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filterTabTextActive: {
-    color: '#8B5CF6',
+    color: '#00FF41',
   },
 
   // Models
@@ -1382,13 +2164,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(10px)' } : {}),
   },
+  stickyFooterDesktop: {
+    left: 320,
+  },
   stickyFooterContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    maxWidth: 900,
+    maxWidth: 1200,
     alignSelf: 'center',
     width: '100%',
+    paddingHorizontal: 24,
   },
   paginationInfo: {
     fontSize: 13,
@@ -1399,16 +2185,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: 'rgba(0, 255, 65, 0.3)',
   },
   loadMoreText: {
     fontSize: 14,
-    color: '#8B5CF6',
+    color: '#00FF41',
     fontWeight: '700',
   },
   allLoadedBadge: {
@@ -1433,6 +2219,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
     overflow: 'hidden',
+  },
+  modelCardDesktop: {
+    width: 320,
+    maxWidth: 320,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   modelCardMain: {
     flexDirection: 'row',
@@ -1484,7 +2276,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1539,7 +2331,7 @@ const styles = StyleSheet.create({
   ratePrompt: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    backgroundColor: 'rgba(0, 255, 65, 0.12)',
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 8,
@@ -1569,7 +2361,7 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.15)',
+    borderColor: 'rgba(0, 255, 65, 0.15)',
   },
   ctaTitle: {
     fontSize: 18,
@@ -1643,7 +2435,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -1661,7 +2453,7 @@ const styles = StyleSheet.create({
   },
   rateModalModelName: {
     fontSize: 13,
-    color: '#8B5CF6',
+    color: '#00FF41',
     marginTop: 4,
     fontWeight: '600',
   },
@@ -1723,15 +2515,15 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
   tagOptionSelected: {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
-    borderColor: '#8B5CF6',
+    backgroundColor: 'rgba(0, 255, 65, 0.2)',
+    borderColor: '#00FF41',
   },
   tagOptionText: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.6)',
   },
   tagOptionTextSelected: {
-    color: '#8B5CF6',
+    color: '#00FF41',
     fontWeight: '600',
   },
 
@@ -1808,7 +2600,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -1874,7 +2666,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   howItWorksCloseBtn: {
-    backgroundColor: '#8B5CF6',
+    backgroundColor: '#00FF41',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
@@ -1882,7 +2674,7 @@ const styles = StyleSheet.create({
   howItWorksCloseBtnText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
+    color: '#000',
   },
 
   // Reviews Modal
@@ -1895,7 +2687,7 @@ const styles = StyleSheet.create({
   },
   reviewsModelName: {
     fontSize: 13,
-    color: '#8B5CF6',
+    color: '#00FF41',
     textAlign: 'center',
     marginBottom: 16,
   },
@@ -1934,14 +2726,14 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    backgroundColor: 'rgba(0, 255, 65, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   reviewerAvatarText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#8B5CF6',
+    color: '#00FF41',
   },
   reviewerName: {
     fontSize: 12,
@@ -1969,14 +2761,14 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   reviewTag: {
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   reviewTagText: {
     fontSize: 10,
-    color: '#8B5CF6',
+    color: '#00FF41',
   },
   reviewsCloseBtn: {
     backgroundColor: 'rgba(255,255,255,0.1)',

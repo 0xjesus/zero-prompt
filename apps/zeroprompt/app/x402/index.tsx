@@ -14,7 +14,7 @@ import {
   Layers, Code, Shield, Zap, ChevronDown, Copy, Check, Terminal, FileCode,
   Play, Wallet, ArrowRight, CheckCircle, Loader, AlertCircle,
   ExternalLink, Sparkles, DollarSign, Lock, Globe, ChevronRight,
-  MessageSquare, Home, Bot, Cpu, CreditCard
+  MessageSquare, Home, Bot, Cpu, CreditCard, Star, Image as ImageIcon
 } from 'lucide-react-native';
 
 import ModelSelectorModal from '../../components/ModelSelectorModal';
@@ -957,7 +957,15 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             <MessageSquare size={16} color="#888" />
             <Text style={styles.navLinkText}>Chat</Text>
           </TouchableOpacity>
-          
+          <TouchableOpacity onPress={() => router.push('/reputation')} style={styles.navLink}>
+            <Star size={16} color="#888" />
+            <Text style={styles.navLinkText}>Reputation</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/models')} style={styles.navLink}>
+            <ImageIcon size={16} color="#888" />
+            <Text style={styles.navLinkText}>Models</Text>
+          </TouchableOpacity>
+
           {/* Add Credits Buttons - Available for everyone */}
           {isConnected && (
             <TouchableOpacity

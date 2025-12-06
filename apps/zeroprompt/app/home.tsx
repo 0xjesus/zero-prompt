@@ -7,12 +7,17 @@ import {
     Image,
     Platform,
     useWindowDimensions,
+    ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
     ArrowRight, Check, Wallet, Brain, Sparkles, Globe,
-    Shield, Lock, MessageSquare, Eye, Layers, Rocket, Star
+    Shield, Lock, MessageSquare, Eye, Layers, Rocket, Star,
+    DollarSign, Image as ImageIcon, Trophy, Home
 } from 'lucide-react-native';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { WalletConnectModal } from '../components/WalletConnectionUI';
 
 // ============================================================================
 // DESIGN SYSTEM
@@ -70,6 +75,17 @@ export default function HomePage() {
     const isTablet = width > 768;
     const containerPadding = isDesktop ? 80 : isTablet ? 40 : 20;
 
+    const { theme } = useTheme();
+    const {
+        user,
+        openWalletModal,
+        isConnecting,
+        isAuthenticating,
+        connectionError,
+        migratedChats,
+        clearMigratedChats
+    } = useAuth();
+
     const navigateToChat = () => router.push('/');
 
     return (
@@ -123,21 +139,65 @@ export default function HomePage() {
                         </Text>
                     </View>
 
-                    <TouchableOpacity
-                        onPress={navigateToChat}
-                        style={{
-                            backgroundColor: COLORS.neonGreen,
-                            paddingHorizontal: 24,
-                            paddingVertical: 12,
-                            borderRadius: 10,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 8
-                        }}
-                    >
-                        <Text style={{ color: '#000', fontWeight: '700' }}>Launch App</Text>
-                        <ArrowRight size={18} color="#000" />
-                    </TouchableOpacity>
+                    {/* Nav Links */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TouchableOpacity
+                            onPress={() => router.push('/chat/new')}
+                            style={{
+                                padding: 10,
+                                borderRadius: 10,
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                            }}
+                        >
+                            <MessageSquare size={20} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => router.push('/x402')}
+                            style={{
+                                padding: 10,
+                                borderRadius: 10,
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                            }}
+                        >
+                            <DollarSign size={20} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => router.push('/reputation')}
+                            style={{
+                                padding: 10,
+                                borderRadius: 10,
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                            }}
+                        >
+                            <Trophy size={20} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => router.push('/models')}
+                            style={{
+                                padding: 10,
+                                borderRadius: 10,
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                            }}
+                        >
+                            <ImageIcon size={20} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={navigateToChat}
+                            style={{
+                                backgroundColor: COLORS.neonGreen,
+                                paddingHorizontal: 24,
+                                paddingVertical: 12,
+                                borderRadius: 10,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 8,
+                                marginLeft: 8,
+                            }}
+                        >
+                            <Text style={{ color: '#000', fontWeight: '700' }}>Launch App</Text>
+                            <ArrowRight size={18} color="#000" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Hero Content */}
@@ -977,18 +1037,31 @@ export default function HomePage() {
                                 <Text style={{ color: COLORS.textSecondary, fontSize: 16 }}>{f}</Text>
                             </View>
                         ))}
-                        <TouchableOpacity onPress={navigateToChat} style={{
-                            backgroundColor: COLORS.neonGreen,
-                            paddingVertical: 18,
-                            borderRadius: 12,
-                            alignItems: 'center',
-                            marginTop: 24,
-                            flexDirection: 'row',
-                            justifyContent: 'center',
-                            gap: 10
-                        }}>
-                            <Wallet size={20} color="#000" />
-                            <Text style={{ color: '#000', fontWeight: '700', fontSize: 16 }}>Connect Wallet</Text>
+                        <TouchableOpacity
+                            onPress={user?.walletAddress ? navigateToChat : openWalletModal}
+                            disabled={isConnecting || isAuthenticating}
+                            style={{
+                                backgroundColor: COLORS.neonGreen,
+                                paddingVertical: 18,
+                                borderRadius: 12,
+                                alignItems: 'center',
+                                marginTop: 24,
+                                flexDirection: 'row',
+                                justifyContent: 'center',
+                                gap: 10,
+                                opacity: isConnecting || isAuthenticating ? 0.7 : 1
+                            }}
+                        >
+                            {isConnecting || isAuthenticating ? (
+                                <ActivityIndicator size="small" color="#000" />
+                            ) : (
+                                <>
+                                    <Wallet size={20} color="#000" />
+                                    <Text style={{ color: '#000', fontWeight: '700', fontSize: 16 }}>
+                                        {user?.walletAddress ? 'Go to Chat' : 'Connect Wallet'}
+                                    </Text>
+                                </>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -1139,6 +1212,18 @@ export default function HomePage() {
                     </Text>
                 </View>
             </View>
+
+            {/* Wallet Connection Modal */}
+            <WalletConnectModal
+                visible={isConnecting || isAuthenticating}
+                onClose={() => {}}
+                theme={theme}
+                isConnecting={isConnecting}
+                isAuthenticating={isAuthenticating}
+                connectionError={connectionError}
+                migratedChats={migratedChats}
+                onClearMigratedChats={clearMigratedChats}
+            />
         </ScrollView>
     );
 }

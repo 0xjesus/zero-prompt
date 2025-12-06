@@ -29,7 +29,7 @@ import {
   Settings, X, Plus, Cpu, ChevronRight, ChevronDown, ChevronUp,
   MessageSquare, Copy, RefreshCw, Lock, Check, Maximize2, Minimize2,
   Image as ImageIcon, FileText, Box, Search, Globe, Brain, Mic, Layers, Grid, Layout,
-  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code, Star
+  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code, Star, Home
 } from 'lucide-react-native';
 
 // ZeroPrompt Logo
@@ -622,6 +622,31 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
             <Text style={[styles.newChatText, { color: theme.background }]}>NEW_OPERATION</Text>
         </TouchableOpacity>
 
+        {/* Home Link */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginHorizontal: 16,
+            marginBottom: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            backgroundColor: 'rgba(0, 255, 65, 0.1)',
+            borderWidth: 1,
+            borderColor: 'rgba(0, 255, 65, 0.3)',
+            borderRadius: 10
+          }}
+          onPress={() => { router.push('/home'); if(!isDesktop) onClose(); }}
+        >
+          <Home color="#00FF41" size={18} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#00FF41', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>HOME</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Landing page</Text>
+          </View>
+          <ChevronRight color="#00FF41" size={16} />
+        </TouchableOpacity>
+
         {/* API x402 Link */}
         <TouchableOpacity
           style={{
@@ -695,6 +720,31 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
             <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>View generated images</Text>
           </View>
           <ChevronRight color="#E91E63" size={16} />
+        </TouchableOpacity>
+
+        {/* Models Link */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginHorizontal: 16,
+            marginBottom: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+            borderWidth: 1,
+            borderColor: 'rgba(0, 212, 255, 0.3)',
+            borderRadius: 10
+          }}
+          onPress={() => { router.push('/models'); if(!isDesktop) onClose(); }}
+        >
+          <Cpu color="#00D4FF" size={18} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#00D4FF', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>MODELS</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Browse 330+ AI models</Text>
+          </View>
+          <ChevronRight color="#00D4FF" size={16} />
         </TouchableOpacity>
 
         {/* Conversation Search */}
