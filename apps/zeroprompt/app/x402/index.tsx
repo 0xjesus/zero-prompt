@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   StyleSheet, Platform, Image, useWindowDimensions, ActivityIndicator, Modal
@@ -14,8 +14,9 @@ import {
   Layers, Code, Shield, Zap, ChevronDown, Copy, Check, Terminal, FileCode,
   Play, Wallet, ArrowRight, CheckCircle, Loader, AlertCircle,
   ExternalLink, Sparkles, DollarSign, Lock, Globe, ChevronRight,
-  MessageSquare, Home, Bot, Cpu
+  MessageSquare, Home, Bot, Cpu, CreditCard
 } from 'lucide-react-native';
+
 import ModelSelectorModal from '../../components/ModelSelectorModal';
 import { API_URL } from '../../config/api';
 import { VAULT_ADDRESS, MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../../lib/constants';
@@ -957,13 +958,14 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             <Text style={styles.navLinkText}>Chat</Text>
           </TouchableOpacity>
           
+          {/* Add Credits Buttons - Available for everyone */}
           {isConnected && (
-            <TouchableOpacity 
-              onPress={() => openDepositModal()} 
-              style={[styles.navLink, { backgroundColor: 'rgba(0, 255, 65, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(0, 255, 65, 0.2)' }]}
+            <TouchableOpacity
+              onPress={() => openDepositModal()}
+              style={[styles.navLink, { backgroundColor: 'rgba(139, 92, 246, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.2)' }]}
             >
-              <Zap size={16} color="#00FF41" />
-              <Text style={[styles.navLinkText, { color: '#00FF41', fontWeight: '700' }]}>Add Credits</Text>
+              <Wallet size={16} color="#8B5CF6" />
+              <Text style={[styles.navLinkText, { color: '#8B5CF6', fontWeight: '700' }]}>Crypto</Text>
             </TouchableOpacity>
           )}
           {isConnected ? (

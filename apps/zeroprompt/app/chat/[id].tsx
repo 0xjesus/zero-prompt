@@ -29,7 +29,7 @@ import {
   Settings, X, Plus, Cpu, ChevronRight, ChevronDown, ChevronUp,
   MessageSquare, Copy, RefreshCw, Lock, Check, Maximize2, Minimize2,
   Image as ImageIcon, FileText, Box, Search, Globe, Brain, Mic, Layers, Grid, Layout,
-  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code
+  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code, Star
 } from 'lucide-react-native';
 
 // ZeroPrompt Logo
@@ -45,10 +45,6 @@ import ImageGalleryModal from "../../components/ImageGalleryModal";
 import { VAULT_ADDRESS } from "../../lib/constants";
 import { API_URL } from "../../config/api";
 
-// Lazy load Thirdweb widget for web only (credit card purchases for non-wallet users)
-const ThirdwebWidgetsComponent = Platform.OS === "web"
-  ? lazy(() => import("../../components/ThirdwebWidgets.web"))
-  : null;
 
 type Model = {
   id: number;
@@ -562,7 +558,7 @@ const SourceList = ({ sources, theme, webSearchType }: any) => {
     );
 };
 
-const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal, onBuyWithCard }: any) => {
+const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal }: any) => {
   const slideAnim = useRef(new Animated.Value(isDesktop ? 0 : -300)).current;
   const [history, setHistory] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -649,6 +645,31 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
             <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Pay-per-request AI</Text>
           </View>
           <ChevronRight color="#8B5CF6" size={16} />
+        </TouchableOpacity>
+
+        {/* AI Reputation Link */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginHorizontal: 16,
+            marginBottom: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 12,
+            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+            borderWidth: 1,
+            borderColor: 'rgba(255, 193, 7, 0.3)',
+            borderRadius: 10
+          }}
+          onPress={() => { router.push('/reputation'); if(!isDesktop) onClose(); }}
+        >
+          <Star color="#FFC107" size={18} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#FFC107', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>AI_REPUTATION</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Rate AI models</Text>
+          </View>
+          <ChevronRight color="#FFC107" size={16} />
         </TouchableOpacity>
 
         {/* Image Gallery Button */}
@@ -776,7 +797,6 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
           onLogout={logout}
           currentBalance={currentBalance}
           onAddCredits={() => { onOpenDepositModal(); if(!isDesktop) onClose(); }}
-          onBuyWithCard={() => { onBuyWithCard?.(); if(!isDesktop) onClose(); }}
         />
       </SafeAreaView>
     </Animated.View>
@@ -1978,7 +1998,6 @@ export default function ChatScreen() {
   const [isSidebarOpen, setSidebarOpen] = useState(isDesktop);
   const [showModelSelector, setShowModelSelector] = useState(false);
   const [showImageGallery, setShowImageGallery] = useState(false);
-  const [showThirdwebWidget, setShowThirdwebWidget] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
@@ -2402,7 +2421,7 @@ export default function ChatScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <RNStatusBar barStyle="light-content" />
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} isDesktop={isDesktop} theme={theme} user={user} guestId={guestId} token={token} getHeaders={getHeaders} connectWallet={openWalletModal} startNewChat={startNewChat} isConnecting={isConnecting} isAuthenticating={isAuthenticating} router={router} currentBalance={currentBalance} logout={logout} onOpenGallery={() => setShowImageGallery(true)} onOpenDepositModal={openDepositModal} onBuyWithCard={() => setShowThirdwebWidget(true)} />
+      <Sidebar isOpen={isSidebarOpen} onClose={() => setSidebarOpen(false)} isDesktop={isDesktop} theme={theme} user={user} guestId={guestId} token={token} getHeaders={getHeaders} connectWallet={openWalletModal} startNewChat={startNewChat} isConnecting={isConnecting} isAuthenticating={isAuthenticating} router={router} currentBalance={currentBalance} logout={logout} onOpenGallery={() => setShowImageGallery(true)} onOpenDepositModal={openDepositModal} />
 
       {/* Overlay when sidebar is open on mobile (blocks content behind) */}
       {isSidebarOpen && !isDesktop && (
@@ -2879,24 +2898,6 @@ export default function ChatScreen() {
         migratedChats={migratedChats}
         onClearMigratedChats={clearMigratedChats}
       />
-
-      {/* Thirdweb Widget Modal - Credit Card for non-wallet users */}
-      {ThirdwebWidgetsComponent && (
-        <Suspense fallback={null}>
-          <ThirdwebWidgetsComponent
-            visible={showThirdwebWidget}
-            onClose={() => setShowThirdwebWidget(false)}
-            defaultAmount="5"
-            receiverAddress={VAULT_ADDRESS}
-            onSuccess={(data: any) => {
-              console.log('[ThirdwebWidget] Purchase success:', data);
-              setShowThirdwebWidget(false);
-              // Refresh balance after card purchase
-              setTimeout(() => refreshBilling(), 2000);
-            }}
-          />
-        </Suspense>
-      )}
 
       {/* Migration Success Banner */}
       {migratedChats !== null && migratedChats > 0 && (

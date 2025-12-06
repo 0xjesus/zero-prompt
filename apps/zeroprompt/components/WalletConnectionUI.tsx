@@ -371,7 +371,6 @@ interface WalletSidebarSectionProps {
   onLogout: () => void;
   currentBalance: number;
   onAddCredits: () => void;
-  onBuyWithCard?: () => void; // For users without wallet
 }
 
 export const WalletSidebarSection = ({
@@ -382,8 +381,7 @@ export const WalletSidebarSection = ({
   onConnectWallet,
   onLogout,
   currentBalance,
-  onAddCredits,
-  onBuyWithCard
+  onAddCredits
 }: WalletSidebarSectionProps) => {
   const [expanded, setExpanded] = useState(false);
   const expandAnim = useRef(new Animated.Value(0)).current;
@@ -454,17 +452,6 @@ export const WalletSidebarSection = ({
           )}
         </TouchableOpacity>
 
-        {/* Buy with Card - for non-crypto users */}
-        {onBuyWithCard && (
-          <TouchableOpacity
-            style={[styles.buyWithCardBtn, { borderColor: theme.success + '40' }]}
-            onPress={onBuyWithCard}
-          >
-            <CreditCard size={16} color={theme.success} />
-            <Text style={[styles.buyWithCardText, { color: theme.success }]}>Buy Credits with Card</Text>
-          </TouchableOpacity>
-        )}
-
         <View style={styles.benefitsList}>
           <View style={styles.benefitItem}>
             <CheckCircle size={12} color={theme.success} />
@@ -519,10 +506,12 @@ export const WalletSidebarSection = ({
             </Text>
           </View>
         </View>
-        <TouchableOpacity style={[styles.addCreditsBtn, { backgroundColor: theme.primary + '15' }]} onPress={onAddCredits}>
-          <CreditCard size={12} color={theme.primary} />
-          <Text style={[styles.addCreditsText, { color: theme.primary }]}>ADD_CREDITS</Text>
-        </TouchableOpacity>
+        <View style={styles.creditButtonsRow}>
+          <TouchableOpacity style={[styles.addCreditsBtn, { backgroundColor: theme.primary + '15', flex: 1 }]} onPress={onAddCredits}>
+            <Wallet size={12} color={theme.primary} />
+            <Text style={[styles.addCreditsText, { color: theme.primary }]}>ADD CREDITS</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Expandable Section with collapse animation */}
@@ -856,14 +845,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontFamily: FONT_MONO
   },
+  creditButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10
+  },
   addCreditsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 8,
-    borderRadius: 6,
-    marginTop: 10
+    borderRadius: 6
   },
   addCreditsText: {
     fontSize: 10,

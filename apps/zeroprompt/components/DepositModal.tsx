@@ -10,16 +10,11 @@ import {
   ActivityIndicator,
   Image,
 } from "react-native";
-import { X, CreditCard, Coins, Zap, ChevronRight } from "lucide-react-native";
+import { X, Coins, Zap } from "lucide-react-native";
 
 // Lazy load deposit widget for web only
 const DepositWidgetComponent = Platform.OS === "web"
   ? lazy(() => import("./DepositWidget.web").then(m => ({ default: m.DepositWidget })))
-  : null;
-
-// Lazy load Thirdweb widget for web only (credit card purchases)
-const ThirdwebWidgetsComponent = Platform.OS === "web"
-  ? lazy(() => import("./ThirdwebWidgets.web"))
   : null;
 
 // Types
@@ -75,7 +70,6 @@ export default function DepositModal({
   const [selectedAmount, setSelectedAmount] = useState<string>("1"); // Default to $1
   const [isProcessing, setIsProcessing] = useState(false);
   const [showWidget, setShowWidget] = useState(false);
-  const [showThirdwebWidget, setShowThirdwebWidget] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [depositSuccess, setDepositSuccess] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -338,40 +332,9 @@ export default function DepositModal({
             <Text style={[styles.footerText, { color: theme.textMuted }]}>
               Secure & Non-custodial - Avalanche C-Chain
             </Text>
-            {/* Credit Card Option for non-web3 users */}
-            {!depositSuccess && !isVerifying && (
-              <TouchableOpacity
-                style={styles.cardPaymentBtn}
-                onPress={() => setShowThirdwebWidget(true)}
-              >
-                <CreditCard size={16} color="#00FF41" />
-                <Text style={styles.cardPaymentText}>No crypto? Buy with card</Text>
-                <ChevronRight size={16} color="#00FF41" />
-              </TouchableOpacity>
-            )}
           </View>
         </View>
       </View>
-
-      {/* Thirdweb Widget Modal (Credit Card Purchases) */}
-      {ThirdwebWidgetsComponent && (
-        <Suspense fallback={null}>
-          <ThirdwebWidgetsComponent
-            visible={showThirdwebWidget}
-            onClose={() => setShowThirdwebWidget(false)}
-            defaultAmount={selectedAmount}
-            receiverAddress={vaultAddress}
-            onSuccess={(data: any) => {
-              console.log('[DepositModal] Thirdweb purchase success:', data);
-              setShowThirdwebWidget(false);
-              // Refresh balance after card purchase
-              if (onRefreshBalance) {
-                setTimeout(() => onRefreshBalance(), 2000);
-              }
-            }}
-          />
-        </Suspense>
-      )}
     </Modal>
   );
 }

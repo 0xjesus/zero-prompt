@@ -1,44 +1,62 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { syncOpenRouterModels } from "../services/openrouterModels";
+import { getReputationMap, getContractAddress } from "../services/onchainReputation";
 
 export const modelsRouter = Router();
 
 modelsRouter.get("/", async (_req, res) => {
+  // Fetch models with their DB reputation cache
   const models = await prisma.model.findMany({
     where: { isActive: true },
     orderBy: [{ displayPriority: "desc" }, { name: "asc" }],
+    include: {
+      reputationCache: {
+        select: {
+          totalRatings: true,
+          averageScore: true,
+        },
+      },
+    },
   });
 
-  // Try to get reputation data (gracefully handle if tables don't exist yet)
-  let reputationMap: Record<number, { totalRatings: number; averageScore: number }> = {};
+  // Try to get on-chain reputation data (primary source)
+  let onChainMap: Record<number, { totalRatings: number; averageScore: number }> = {};
   try {
-    const reputations = await (prisma as any).modelReputationCache?.findMany?.({
-      select: {
-        modelId: true,
-        totalRatings: true,
-        averageScore: true,
-      },
-    });
-    if (reputations) {
-      for (const rep of reputations) {
-        reputationMap[rep.modelId] = {
-          totalRatings: rep.totalRatings,
-          averageScore: Number(rep.averageScore),
-        };
-      }
-    }
-  } catch {
-    // Reputation tables not yet migrated, continue without reputation data
+    onChainMap = await getReputationMap();
+  } catch (err) {
+    console.error("[Models] Failed to fetch on-chain reputation:", err);
+    // Fall back to DB cache
   }
 
-  // Transform to include reputation
-  const modelsWithReputation = models.map((model) => ({
-    ...model,
-    reputation: reputationMap[model.id] || null,
-  }));
+  // Transform to include reputation (prefer on-chain, fallback to DB cache)
+  const modelsWithReputation = models.map((model) => {
+    const onChainRep = onChainMap[model.id];
+    const dbRep = model.reputationCache;
 
-  res.json({ models: modelsWithReputation });
+    // Prefer on-chain data, fallback to DB cache
+    let reputation = null;
+    if (onChainRep && onChainRep.totalRatings > 0) {
+      reputation = onChainRep;
+    } else if (dbRep && dbRep.totalRatings > 0) {
+      reputation = {
+        totalRatings: dbRep.totalRatings,
+        averageScore: Number(dbRep.averageScore),
+      };
+    }
+
+    // Remove reputationCache from response (we merged it into reputation)
+    const { reputationCache, ...modelData } = model;
+    return {
+      ...modelData,
+      reputation,
+    };
+  });
+
+  res.json({
+    models: modelsWithReputation,
+    reputationContract: getContractAddress(),
+  });
 });
 
 modelsRouter.post("/sync", async (_req, res) => {

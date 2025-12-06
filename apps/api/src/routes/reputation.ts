@@ -204,38 +204,69 @@ router.get("/model/:openrouterId", async (req: Request, res: Response) => {
 
 /**
  * GET /reputation/top
- * Get top rated models
+ * Get all models with their reputation data (sorted by score, then alphabetically)
  */
 router.get("/top", async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 50;
 
-    const topModels = await db.modelReputationCache.findMany({
-      where: {
-        totalRatings: { gte: 3 },
-      },
-      orderBy: [{ averageScore: "desc" }, { totalRatings: "desc" }],
-      take: limit,
-      include: {
-        model: {
+    // Get all active models with their reputation data (if any)
+    const allModels = await db.model.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        openrouterId: true,
+        name: true,
+        iconUrl: true,
+        reputationCache: {
           select: {
-            id: true,
-            openrouterId: true,
-            name: true,
-            iconUrl: true,
+            totalRatings: true,
+            averageScore: true,
+            fiveStarCount: true,
+            fourStarCount: true,
+            threeStarCount: true,
+            twoStarCount: true,
+            oneStarCount: true,
           },
         },
       },
+      take: limit,
+    });
+
+    // Sort: models with ratings first (by score desc), then unrated models alphabetically
+    const sortedModels = allModels.sort((a: any, b: any) => {
+      const aRatings = a.reputationCache?.totalRatings || 0;
+      const bRatings = b.reputationCache?.totalRatings || 0;
+      const aScore = a.reputationCache?.averageScore || 0;
+      const bScore = b.reputationCache?.averageScore || 0;
+
+      // Both have ratings - sort by score then by rating count
+      if (aRatings > 0 && bRatings > 0) {
+        if (bScore !== aScore) return bScore - aScore;
+        return bRatings - aRatings;
+      }
+      // Only one has ratings - rated goes first
+      if (aRatings > 0) return -1;
+      if (bRatings > 0) return 1;
+      // Neither has ratings - alphabetical
+      return a.name.localeCompare(b.name);
     });
 
     res.json({
-      models: topModels.map((rep: any) => ({
-        id: rep.model.id,
-        openrouterId: rep.model.openrouterId,
-        name: rep.model.name,
-        iconUrl: rep.model.iconUrl,
-        totalRatings: rep.totalRatings,
-        averageScore: Number(rep.averageScore),
+      models: sortedModels.map((model: any) => ({
+        id: model.id,
+        openrouterId: model.openrouterId,
+        name: model.name,
+        iconUrl: model.iconUrl,
+        totalRatings: model.reputationCache?.totalRatings || 0,
+        averageScore: Number(model.reputationCache?.averageScore || 0),
+        distribution: model.reputationCache ? [
+          model.reputationCache.oneStarCount,
+          model.reputationCache.twoStarCount,
+          model.reputationCache.threeStarCount,
+          model.reputationCache.fourStarCount,
+          model.reputationCache.fiveStarCount,
+        ] : [0, 0, 0, 0, 0],
       })),
     });
   } catch (error: any) {

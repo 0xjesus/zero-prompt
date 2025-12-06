@@ -11,7 +11,7 @@ import {
 import { useRouter } from 'expo-router';
 import {
     ArrowRight, Check, Wallet, Brain, Sparkles, Globe,
-    Shield, Lock, MessageSquare, Eye, Layers, Rocket
+    Shield, Lock, MessageSquare, Eye, Layers, Rocket, Star
 } from 'lucide-react-native';
 
 // ============================================================================
@@ -648,6 +648,26 @@ export default function HomePage() {
                         </Text>
                         <Text style={{ color: COLORS.textSecondary, fontSize: 16 }}>
                             Frictionless AI-to-AI payments protocol. Try the interactive demo.
+                        </Text>
+                    </TouchableOpacity>
+                    {/* AI Reputation System Card */}
+                    <TouchableOpacity
+                        onPress={() => router.push('/reputation')}
+                        style={{
+                            width: isDesktop ? 'calc(33.33% - 16px)' : isTablet ? 'calc(50% - 12px)' : '100%',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)', // Gold/amber tint
+                            borderRadius: 20,
+                            padding: 32,
+                            borderWidth: 1,
+                            borderColor: '#FFC107'
+                        }}
+                    >
+                        <Star size={32} color="#FFC107" style={{ marginBottom: 20 }} />
+                        <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 8 }}>
+                            AI Reputation (ERC-8004)
+                        </Text>
+                        <Text style={{ color: COLORS.textSecondary, fontSize: 16 }}>
+                            Decentralized reputation system for AI models. Rate and discover the best models.
                         </Text>
                     </TouchableOpacity>
                 </View>
