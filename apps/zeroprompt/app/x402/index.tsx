@@ -942,7 +942,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             style={styles.navLogo}
             resizeMode="contain"
           />
-          <Text style={styles.navTitle}>ZeroPrompt</Text>
+          {isDesktop && <Text style={styles.navTitle}>ZeroPrompt</Text>}
           <View style={styles.navBadge}>
             <Text style={styles.navBadgeText}>API</Text>
           </View>
@@ -951,25 +951,25 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         <View style={styles.navLinks}>
           <TouchableOpacity onPress={() => router.push('/home')} style={styles.navLink}>
             <Home size={16} color="#888" />
-            <Text style={styles.navLinkText}>Home</Text>
+            {isDesktop && <Text style={styles.navLinkText}>Home</Text>}
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/')} style={styles.navLink}>
             <MessageSquare size={16} color="#888" />
-            <Text style={styles.navLinkText}>Chat</Text>
+            {isDesktop && <Text style={styles.navLinkText}>Chat</Text>}
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/reputation')} style={styles.navLink}>
             <Star size={16} color="#888" />
-            <Text style={styles.navLinkText}>Reputation</Text>
+            {isDesktop && <Text style={styles.navLinkText}>Reputation</Text>}
           </TouchableOpacity>
 
           {/* Add Credits Buttons - Available for everyone */}
           {isConnected && (
             <TouchableOpacity
               onPress={() => openDepositModal()}
-              style={[styles.navLink, { backgroundColor: 'rgba(139, 92, 246, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.2)' }]}
+              style={[styles.navLink, { backgroundColor: 'rgba(139, 92, 246, 0.1)', paddingHorizontal: isDesktop ? 12 : 8, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.2)' }]}
             >
               <Wallet size={16} color="#8B5CF6" />
-              <Text style={[styles.navLinkText, { color: '#8B5CF6', fontWeight: '700' }]}>Crypto</Text>
+              {isDesktop && <Text style={[styles.navLinkText, { color: '#8B5CF6', fontWeight: '700' }]}>Crypto</Text>}
             </TouchableOpacity>
           )}
           {isConnected ? (
@@ -1016,7 +1016,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             </>
           ) : (
             <TouchableOpacity
-              style={styles.connectBtn}
+              style={[styles.connectBtn, !isDesktop && { paddingHorizontal: 10 }]}
               onPress={openWalletModal}
               disabled={isConnecting || isAuthenticating}
             >
@@ -1025,7 +1025,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
               ) : (
                 <>
                   <Wallet size={16} color="#000" />
-                  <Text style={styles.connectBtnText}>Connect</Text>
+                  {isDesktop && <Text style={styles.connectBtnText}>Connect</Text>}
                 </>
               )}
             </TouchableOpacity>
