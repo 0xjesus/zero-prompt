@@ -15,5 +15,5 @@ export const AVALANCHE_CONFIG = {
 // ZeroPromptVault contract address on Avalanche
 export const VAULT_ADDRESS = "0x773c9849F15Ac7484232767536Fe5495B5E231e9";
 
-// Merchant address for x402 payments
-export const MERCHANT_ADDRESS = process.env.EXPO_PUBLIC_X402_MERCHANT_ADDRESS || "0xA43e4Df85CBEF2D86669c90b581E5FA7e9B06Baa";
+// Merchant address for x402 payments (must match backend X402_MERCHANT_ADDRESS)
+export const MERCHANT_ADDRESS = process.env.EXPO_PUBLIC_X402_MERCHANT_ADDRESS || "0x209F0baCA0c23edc57881B26B68FC4148123B039";
