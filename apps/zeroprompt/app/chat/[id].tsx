@@ -1194,13 +1194,28 @@ const ResponseContent = ({ content, reasoning, sources, theme, isLoading, attach
     );
 };
 
-const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
+const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
     const isUser = item.role === "user";
     const { width } = useWindowDimensions();
     const isDesktop = width > 1024;
     const [activeTab, setActiveTab] = useState(0);
     const [focusedModelIdx, setFocusedModelIdx] = useState<number | null>(null);
     const [viewMode, setViewMode] = useState<'tabs' | 'grid'>('tabs'); // Toggle between tab view and grid view
+
+    // Find the user message that precedes this comparison
+    const userPrompt = useMemo(() => {
+        if (!allMessages || item.role !== 'comparison') return null;
+        const currentIndex = allMessages.findIndex((m: any) => m.id === item.id);
+        if (currentIndex > 0) {
+            // Look backwards for the most recent user message
+            for (let i = currentIndex - 1; i >= 0; i--) {
+                if (allMessages[i].role === 'user') {
+                    return allMessages[i].content;
+                }
+            }
+        }
+        return null;
+    }, [allMessages, item]);
 
     // User Message - Modern right-aligned style with copy button
     if (isUser) {
@@ -1265,9 +1280,19 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
         content += `Models: ${item.responses.length}\n`;
         content += `\n${'='.repeat(60)}\n\n`;
 
+        // Include the user's prompt/question
+        if (userPrompt) {
+            content += `## 📝 USER PROMPT\n`;
+            content += `-`.repeat(40) + `\n\n`;
+            content += userPrompt;
+            content += `\n\n${'='.repeat(60)}\n\n`;
+        }
+
+        content += `## 🤖 AI RESPONSES\n\n`;
+
         item.responses.forEach((res: any, idx: number) => {
             const modelName = res.modelName?.split('/').pop() || res.modelName || `Model ${idx + 1}`;
-            content += `## ${idx + 1}. ${modelName}\n`;
+            content += `### ${idx + 1}. ${modelName}\n`;
             content += `-`.repeat(40) + `\n\n`;
 
             if (res.status === 'done' && res.content) {
@@ -1303,7 +1328,7 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
-    }, [item.responses]);
+    }, [item.responses, userPrompt]);
 
     if (item.role === 'comparison' && item.responses) {
         const responses = item.responses;
@@ -2629,7 +2654,7 @@ export default function ChatScreen() {
                     alignSelf: 'center',
                     width: '100%'
                 }}
-                renderItem={({ item }) => <ChatBubble item={item} theme={theme} isSidebarOpen={isSidebarOpen} />}
+                renderItem={({ item }) => <ChatBubble item={item} theme={theme} isSidebarOpen={isSidebarOpen} allMessages={messages} />}
                 ListEmptyComponent={
                     <View style={{
                         flex: 1,
