@@ -532,10 +532,11 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
     return !arch?.output_modalities?.includes('image') && (m.publicPricingPrompt ?? 0) > 0;
   });
 
-  // Fetch quote when models or prompt change
+  // Fetch quote when models or prompt change - always update price dynamically
   useEffect(() => {
     const fetchQuote = async () => {
-      if (selectedModels.length < 2 || !prompt.trim()) {
+      // Need at least 1 model to show estimated price, 2 to execute
+      if (selectedModels.length < 1 || !prompt.trim()) {
         setQuote(null);
         return;
       }
@@ -561,7 +562,8 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
       }
     };
 
-    const timeoutId = setTimeout(fetchQuote, 500);
+    // Debounce: wait 300ms after user stops typing
+    const timeoutId = setTimeout(fetchQuote, 300);
     return () => clearTimeout(timeoutId);
   }, [selectedModels, prompt]);
 
@@ -913,10 +915,11 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
     return !arch?.output_modalities?.includes('image') && (m.publicPricingPrompt ?? 0) > 0;
   });
 
-  // Fetch quote when models, judge, or prompt change
+  // Fetch quote when models, judge, or prompt change - always update price dynamically
   useEffect(() => {
     const fetchQuote = async () => {
-      if (selectedModels.length < 2 || !judgeModel || !prompt.trim()) {
+      // Need at least 1 model to show estimated price
+      if (selectedModels.length < 1 || !prompt.trim()) {
         setQuote(null);
         return;
       }
@@ -928,7 +931,7 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             models: selectedModels.map(m => m.openrouterId),
-            judge: judgeModel.openrouterId,
+            judge: judgeModel?.openrouterId || selectedModels[0]?.openrouterId,
             prompt
           })
         });
@@ -943,7 +946,8 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
       }
     };
 
-    const timeoutId = setTimeout(fetchQuote, 500);
+    // Debounce: wait 300ms after user stops typing
+    const timeoutId = setTimeout(fetchQuote, 300);
     return () => clearTimeout(timeoutId);
   }, [selectedModels, judgeModel, prompt]);
 
@@ -1331,7 +1335,7 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
   const [quote, setQuote] = useState<any>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
 
-  // Fetch quote when models or prompt change
+  // Fetch quote when models or prompt change - always update price dynamically
   useEffect(() => {
     const fetchQuote = async () => {
       if (selectedModels.length < 1 || !prompt.trim()) {
@@ -1360,7 +1364,8 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
       }
     };
 
-    const timeoutId = setTimeout(fetchQuote, 500);
+    // Debounce: wait 300ms after user stops typing
+    const timeoutId = setTimeout(fetchQuote, 300);
     return () => clearTimeout(timeoutId);
   }, [selectedModels, prompt]);
 
