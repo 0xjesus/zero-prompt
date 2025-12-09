@@ -2,7 +2,7 @@
   "expo": {
     "name": "ZeroPrompt",
     "slug": "zeroprompt",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "scheme": "zeroprompt",
     "platforms": ["ios", "android", "web"],
     "orientation": "portrait",
@@ -17,7 +17,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.zeroprompt.app",
+      "package": "app.zeroprompt.com",
       "adaptiveIcon": {
         "foregroundImage": "./assets/logos/zero-prompt-logo.png",
         "backgroundColor": "#000000"
