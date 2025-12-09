@@ -48,11 +48,37 @@ Every developer has asked a friend: *"Hey, can I borrow your API key?"* You want
 
 ### Smart Contracts (Avalanche Mainnet)
 
-| Contract | Address |
-|----------|---------|
-| Reputation Registry | `0x3A7e2E328618175bfeb1d1581a79aDf999214c7d` |
-| Billing Vault | `0x773c9849F15Ac7484232767536Fe5495B5E231e9` |
-| USDC Payments | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` |
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| **Billing Vault** | `0x773c9849F15Ac7484232767536Fe5495B5E231e9` | Holds user AVAX deposits for Chat Mode |
+| **Reputation Registry** | `0x3A7e2E328618175bfeb1d1581a79aDf999214c7d` | ERC-8004 for AI model ratings |
+| **USDC** | `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E` | Stablecoin for x402 gasless payments |
+
+#### Billing Vault Contract
+
+The Billing Vault is the core of Chat Mode. It's a simple but effective pattern:
+
+```
+1. User deposits AVAX → stored in contract mapped to their wallet
+2. User sends AI request → backend calculates cost from OpenRouter pricing
+3. Backend deducts cost from user's balance (off-chain tracking, on-chain settlement)
+4. User can withdraw remaining balance anytime
+```
+
+Key functions:
+- `deposit()` - Add AVAX to your balance
+- `withdraw(amount)` - Withdraw unused credits
+- `getBalance(address)` - Check current balance
+
+This removes the friction of per-request transactions while keeping funds non-custodial (users control withdrawals).
+
+#### Reputation Registry (ERC-8004)
+
+Custom standard for decentralized AI model reputation:
+- Users rate models after using them (1-5 stars + category tags)
+- Ratings stored on-chain, transparent and immutable
+- Enables filtering models by community trust scores
+- Prevents providers from gaming centralized leaderboards
 
 ---
 

@@ -560,19 +560,26 @@ export default function ModelSelectorModal({
     };
 
     return (
-        <Modal visible={visible} animationType={isMobile ? "slide" : "fade"} transparent>
+        <Modal
+            visible={visible}
+            animationType={isMobile ? "slide" : "fade"}
+            transparent
+            statusBarTranslucent={Platform.OS === 'android'}
+            onRequestClose={onClose}
+        >
             <View style={[styles.overlay, isMobile && { justifyContent: 'flex-end' }]}>
                 <View style={[
                     styles.modalContainer,
                     {
                         width: modalWidth,
                         maxHeight: modalHeight,
+                        height: isMobile ? modalHeight : undefined,
                     },
                     isMobile && {
                         borderRadius: 0,
                         borderTopLeftRadius: 24,
                         borderTopRightRadius: 24,
-                        paddingBottom: Platform.OS === 'ios' ? 34 : 0
+                        paddingBottom: Platform.OS === 'ios' ? 34 : 20
                     }
                 ]}>
                     {/* Mobile Drag Handle */}

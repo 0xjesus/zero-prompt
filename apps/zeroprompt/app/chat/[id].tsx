@@ -2369,16 +2369,48 @@ export default function ChatScreen() {
   const streamModelResponse = async (model: Model, payload: any[], comparisonId: string, overrideConversationId: string | null) => {
       updateResponse(comparisonId, model.openrouterId, { status: 'streaming' });
       try {
-          const res = await fetch(`${API_URL}/llm/chat/stream`, { 
-              method: "POST", 
-              headers: getHeaders(), 
-              body: JSON.stringify({ 
-                  messages: payload, 
-                  model: model.openrouterId, 
+          // For native platforms, use non-streaming endpoint since ReadableStream isn't supported
+          const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
+          const endpoint = isNative ? `${API_URL}/llm/chat` : `${API_URL}/llm/chat/stream`;
+
+          const res = await fetch(endpoint, {
+              method: "POST",
+              headers: getHeaders(),
+              body: JSON.stringify({
+                  messages: payload,
+                  model: model.openrouterId,
                   conversationId: overrideConversationId || conversationId,
                   webSearch: webSearchEnabled
-              }) 
+              })
           });
+
+          // For native platforms, handle non-streaming response
+          if (isNative) {
+              const data = await res.json();
+              if (!res.ok) {
+                  throw new Error(data.error || 'Request failed');
+              }
+              if (data.conversationId && data.conversationId !== conversationId) {
+                  setConversationId(data.conversationId);
+                  router.setParams({ id: data.conversationId });
+              }
+              // Map response fields - non-streaming uses 'reply', streaming uses 'content'
+              updateResponse(comparisonId, model.openrouterId, {
+                  content: data.reply || data.content || data.choices?.[0]?.message?.content || '',
+                  reasoning: data.reasoning || '',
+                  sources: data.sources || [],
+                  webSearchType: data.webSearchType || null,
+                  attachmentUrl: data.attachmentUrl,
+                  attachmentType: data.attachmentType,
+                  generatedImages: data.generatedImages || [],
+                  billing: data.billing,
+                  status: 'done'
+              });
+              if (data.billing) refreshBilling();
+              return;
+          }
+
+          // For web, use streaming
           const reader = res.body?.getReader();
           const decoder = new TextDecoder();
           if (!reader) throw new Error("No reader");
@@ -2444,7 +2476,10 @@ export default function ChatScreen() {
             }
           }
           updateResponse(comparisonId, model.openrouterId, { status: 'done' });
-      } catch (err) { updateResponse(comparisonId, model.openrouterId, { status: 'error', error: 'Connection Failed' }); }
+      } catch (err) {
+          console.error('Stream error:', err);
+          updateResponse(comparisonId, model.openrouterId, { status: 'error', error: 'Connection Failed' });
+      }
   };
 
   const updateResponse = (msgId: string, modelId: string, updates: any) => {
