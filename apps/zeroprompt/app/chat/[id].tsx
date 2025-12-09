@@ -5,7 +5,6 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,6 +20,7 @@ import {
   ScrollView,
   Linking
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Markdown from 'react-native-markdown-display';
 import { Video, ResizeMode } from "expo-av";
 
@@ -240,7 +240,7 @@ const ModelLogo = ({
 };
 
 // Copy button component with feedback
-const CopyButton = ({ content, theme, size = 14 }: { content: string; theme: any; size?: number }) => {
+const CopyButton = ({ content, theme, size = 14, label }: { content: string; theme: any; size?: number; label?: string }) => {
     const [copied, setCopied] = useState(false);
 
     const handleCopy = () => {
@@ -253,6 +253,9 @@ const CopyButton = ({ content, theme, size = 14 }: { content: string; theme: any
         <TouchableOpacity
             onPress={handleCopy}
             style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: label ? 6 : 0,
                 padding: 6,
                 backgroundColor: copied ? 'rgba(0, 255, 65, 0.15)' : 'rgba(255,255,255,0.05)',
                 borderRadius: 6
@@ -262,6 +265,11 @@ const CopyButton = ({ content, theme, size = 14 }: { content: string; theme: any
                 <Check size={size} color={theme.primary} strokeWidth={3} />
             ) : (
                 <Copy size={size} color={theme.secondary} />
+            )}
+            {label && (
+                <Text style={{ color: copied ? theme.primary : theme.secondary, fontSize: 11, fontFamily: FONT_MONO }}>
+                    {copied ? 'Copied!' : label}
+                </Text>
             )}
         </TouchableOpacity>
     );
@@ -559,16 +567,19 @@ const SourceList = ({ sources, theme, webSearchType }: any) => {
 };
 
 const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal }: any) => {
-  const slideAnim = useRef(new Animated.Value(isDesktop ? 0 : -300)).current;
+  const { width } = useWindowDimensions();
+  const isMobile = width < 600;
+  const sidebarWidth = isDesktop ? 280 : (isMobile ? Math.min(width * 0.85, 320) : 300);
+  const slideAnim = useRef(new Animated.Value(isDesktop ? 0 : -sidebarWidth)).current;
   const [history, setHistory] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isDesktop) { slideAnim.setValue(0); } else {
-        Animated.timing(slideAnim, { toValue: isOpen ? 0 : -320, duration: 300, useNativeDriver: true, easing: Easing.out(Easing.poly(4)) }).start();
+        Animated.timing(slideAnim, { toValue: isOpen ? 0 : -sidebarWidth - 20, duration: 280, useNativeDriver: true, easing: Easing.out(Easing.cubic) }).start();
     }
-  }, [isOpen, isDesktop]);
+  }, [isOpen, isDesktop, sidebarWidth]);
 
   const loadHistory = () => {
       if (user || guestId) {
@@ -604,145 +615,142 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
   if (!isOpen) return null;
 
   return (
-    <Animated.View style={[styles.sidebar, { backgroundColor: theme.surface, borderColor: theme.border, transform: [{ translateX: slideAnim }], position: isDesktop ? 'relative' : 'absolute', zIndex: 1000, width: isDesktop ? 280 : 300, height: '100%', borderRightWidth: 1 }]}>
+    <Animated.View style={[styles.sidebar, { backgroundColor: theme.surface, borderColor: theme.border, transform: [{ translateX: slideAnim }], position: isDesktop ? 'relative' : 'absolute', zIndex: 1000, width: sidebarWidth, height: '100%', borderRightWidth: 1, ...(isMobile && !isDesktop && { borderTopRightRadius: 20, borderBottomRightRadius: 20 }) }]}>
       <SafeAreaView style={{flex: 1}}>
+        {/* Fixed Header */}
         <View style={styles.sidebarHeader}>
           <View style={styles.brandRow}>
-            <Image source={ZEROPROMPT_LOGO} style={{width: 32, height: 32}} resizeMode="contain" />
-            <Text style={[styles.brandText, { color: theme.text }]}>ZeroPrompt</Text>
+            <Image source={ZEROPROMPT_LOGO} style={{width: isMobile ? 28 : 32, height: isMobile ? 28 : 32}} resizeMode="contain" />
+            <Text style={[styles.brandText, { color: theme.text, fontSize: isMobile ? 16 : 18 }]}>ZeroPrompt</Text>
           </View>
           {!isDesktop && (
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <X color={theme.secondary} size={24} />
+              <X color={theme.secondary} size={isMobile ? 20 : 24} />
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity style={[styles.newChatBtn, { backgroundColor: theme.primary }]} onPress={() => { startNewChat(); if(!isDesktop) onClose(); }}>
-            <Plus color={theme.background} size={20} />
-            <Text style={[styles.newChatText, { color: theme.background }]}>NEW_OPERATION</Text>
-        </TouchableOpacity>
 
-        {/* Home Link */}
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            marginHorizontal: 16,
-            marginBottom: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            backgroundColor: 'rgba(0, 255, 65, 0.1)',
-            borderWidth: 1,
-            borderColor: 'rgba(0, 255, 65, 0.3)',
-            borderRadius: 10
-          }}
-          onPress={() => { router.push('/home'); if(!isDesktop) onClose(); }}
+        {/* Scrollable Content */}
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <Home color="#00FF41" size={18} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#00FF41', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>HOME</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Landing page</Text>
-          </View>
-          <ChevronRight color="#00FF41" size={16} />
-        </TouchableOpacity>
+          <TouchableOpacity style={[styles.newChatBtn, { backgroundColor: theme.primary, marginHorizontal: isMobile ? 12 : 16, padding: isMobile ? 10 : 12, marginBottom: isMobile ? 12 : 24 }]} onPress={() => { startNewChat(); if(!isDesktop) onClose(); }}>
+              <Plus color={theme.background} size={isMobile ? 18 : 20} />
+              <Text style={[styles.newChatText, { color: theme.background, fontSize: isMobile ? 12 : 14 }]}>NEW_OPERATION</Text>
+          </TouchableOpacity>
 
-        {/* API x402 Link */}
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            marginHorizontal: 16,
-            marginBottom: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            backgroundColor: 'rgba(139, 92, 246, 0.1)',
-            borderWidth: 1,
-            borderColor: 'rgba(139, 92, 246, 0.3)',
-            borderRadius: 10
-          }}
-          onPress={() => { router.push('/x402'); if(!isDesktop) onClose(); }}
-        >
-          <Code color="#8B5CF6" size={18} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#8B5CF6', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>API_x402</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Pay-per-request AI</Text>
-          </View>
-          <ChevronRight color="#8B5CF6" size={16} />
-        </TouchableOpacity>
+          {/* Navigation Links - Compact horizontal row on mobile */}
+          {isMobile ? (
+            <View style={{ flexDirection: 'row', paddingHorizontal: 12, marginBottom: 12, gap: 8 }}>
+              <TouchableOpacity
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: 'rgba(0, 255, 65, 0.1)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(0, 255, 65, 0.3)' }}
+                onPress={() => { router.push('/home'); onClose(); }}
+              >
+                <Home color="#00FF41" size={18} />
+                <Text style={{ color: '#00FF41', fontSize: 9, fontWeight: '600', fontFamily: FONT_MONO, marginTop: 4 }}>HOME</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: 'rgba(139, 92, 246, 0.1)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.3)' }}
+                onPress={() => { router.push('/x402'); onClose(); }}
+              >
+                <Code color="#8B5CF6" size={18} />
+                <Text style={{ color: '#8B5CF6', fontSize: 9, fontWeight: '600', fontFamily: FONT_MONO, marginTop: 4 }}>x402</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: 'rgba(255, 193, 7, 0.1)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255, 193, 7, 0.3)' }}
+                onPress={() => { router.push('/reputation'); onClose(); }}
+              >
+                <Star color="#FFC107" size={18} />
+                <Text style={{ color: '#FFC107', fontSize: 9, fontWeight: '600', fontFamily: FONT_MONO, marginTop: 4 }}>RATE</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: 'rgba(233, 30, 99, 0.1)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(233, 30, 99, 0.3)' }}
+                onPress={() => { onOpenGallery(); onClose(); }}
+              >
+                <ImageIcon color="#E91E63" size={18} />
+                <Text style={{ color: '#E91E63', fontSize: 9, fontWeight: '600', fontFamily: FONT_MONO, marginTop: 4 }}>IMGS</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 8, marginBottom: 12 }}>
+              {/* Home Link */}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(0, 255, 65, 0.1)', borderWidth: 1, borderColor: 'rgba(0, 255, 65, 0.3)', borderRadius: 10 }}
+                onPress={() => { router.push('/home'); if(!isDesktop) onClose(); }}
+              >
+                <Home color="#00FF41" size={18} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#00FF41', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>HOME</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Landing page</Text>
+                </View>
+                <ChevronRight color="#00FF41" size={14} />
+              </TouchableOpacity>
 
-        {/* AI Reputation Link */}
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            marginHorizontal: 16,
-            marginBottom: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            backgroundColor: 'rgba(255, 193, 7, 0.1)',
-            borderWidth: 1,
-            borderColor: 'rgba(255, 193, 7, 0.3)',
-            borderRadius: 10
-          }}
-          onPress={() => { router.push('/reputation'); if(!isDesktop) onClose(); }}
-        >
-          <Star color="#FFC107" size={18} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#FFC107', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>AI_REPUTATION</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Rate AI models</Text>
-          </View>
-          <ChevronRight color="#FFC107" size={16} />
-        </TouchableOpacity>
+              {/* API x402 Link */}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(139, 92, 246, 0.1)', borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.3)', borderRadius: 10 }}
+                onPress={() => { router.push('/x402'); if(!isDesktop) onClose(); }}
+              >
+                <Code color="#8B5CF6" size={18} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8B5CF6', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>API_x402</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Pay-per-request AI</Text>
+                </View>
+                <ChevronRight color="#8B5CF6" size={14} />
+              </TouchableOpacity>
 
-        {/* Image Gallery Button */}
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            marginHorizontal: 16,
-            marginBottom: 12,
-            paddingHorizontal: 14,
-            paddingVertical: 12,
-            backgroundColor: 'rgba(233, 30, 99, 0.1)',
-            borderWidth: 1,
-            borderColor: 'rgba(233, 30, 99, 0.3)',
-            borderRadius: 10
-          }}
-          onPress={() => { onOpenGallery(); if(!isDesktop) onClose(); }}
-        >
-          <ImageIcon color="#E91E63" size={18} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: '#E91E63', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>IMG_GALLERY</Text>
-            <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>View generated images</Text>
-          </View>
-          <ChevronRight color="#E91E63" size={16} />
-        </TouchableOpacity>
+              {/* AI Reputation Link */}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(255, 193, 7, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 193, 7, 0.3)', borderRadius: 10 }}
+                onPress={() => { router.push('/reputation'); if(!isDesktop) onClose(); }}
+              >
+                <Star color="#FFC107" size={18} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#FFC107', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>AI_REPUTATION</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Rate AI models</Text>
+                </View>
+                <ChevronRight color="#FFC107" size={14} />
+              </TouchableOpacity>
 
-        {/* Conversation Search */}
-        <View style={{paddingHorizontal: 16, marginBottom: 12}}>
+              {/* Image Gallery Button */}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(233, 30, 99, 0.1)', borderWidth: 1, borderColor: 'rgba(233, 30, 99, 0.3)', borderRadius: 10 }}
+                onPress={() => { onOpenGallery(); if(!isDesktop) onClose(); }}
+              >
+                <ImageIcon color="#E91E63" size={18} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#E91E63', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>IMG_GALLERY</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>View generated images</Text>
+                </View>
+                <ChevronRight color="#E91E63" size={14} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+        {/* Conversation Search - Optimized for mobile */}
+        <View style={{paddingHorizontal: isMobile ? 12 : 16, marginBottom: isMobile ? 8 : 12}}>
             <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8,
+                gap: isMobile ? 6 : 8,
                 backgroundColor: 'rgba(255,255,255,0.03)',
                 borderWidth: 1,
                 borderColor: 'rgba(255,255,255,0.08)',
                 borderRadius: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 8
+                paddingHorizontal: isMobile ? 8 : 10,
+                paddingVertical: isMobile ? 10 : 8
             }}>
-                <Search size={14} color={theme.secondary} />
+                <Search size={isMobile ? 16 : 14} color={theme.secondary} />
                 <TextInput
                     placeholder="Search chats..."
                     placeholderTextColor={theme.textMuted}
                     style={{
                         flex: 1,
                         color: theme.text,
-                        fontSize: 12,
+                        fontSize: isMobile ? 14 : 12,
                         fontFamily: FONT_MONO,
                         paddingVertical: 0
                     }}
@@ -751,26 +759,31 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
                 />
                 {searchQuery.length > 0 && (
                     <TouchableOpacity onPress={() => setSearchQuery("")}>
-                        <X size={12} color={theme.secondary} />
+                        <X size={isMobile ? 14 : 12} color={theme.secondary} />
                     </TouchableOpacity>
                 )}
             </View>
         </View>
 
-        <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.secondary }]}>HISTORY_LOGS</Text>
-            <Text style={{color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO}}>{filteredHistory.length}</Text>
-        </View>
-        <FlatList
-            data={filteredHistory}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{paddingHorizontal: 16, gap: 4}}
-            renderItem={({ item }) => (
-                <View style={{
+          <View style={[styles.sectionHeader, { marginTop: isMobile ? 8 : 0, paddingHorizontal: isMobile ? 12 : 20 }]}>
+              <Text style={[styles.sectionTitle, { color: theme.secondary, fontSize: isMobile ? 12 : 10 }]}>HISTORY_LOGS</Text>
+              <Text style={{color: theme.textMuted, fontSize: isMobile ? 11 : 9, fontFamily: FONT_MONO}}>{filteredHistory.length}</Text>
+          </View>
+
+          {/* History List - flex to fill available space */}
+          <View style={{ paddingHorizontal: isMobile ? 12 : 16, flex: 1, minHeight: 150 }}>
+            {filteredHistory.length === 0 ? (
+              <Text style={{color: theme.secondary, padding: 20, fontSize: 10, fontFamily: FONT_MONO, textAlign: 'center'}}>
+                  {searchQuery ? "NO_MATCHES" : "NO_DATA"}
+              </Text>
+            ) : (
+              filteredHistory.slice(0, 20).map((item) => (
+                <View key={item.id} style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: 'transparent',
-                    borderRadius: 8
+                    backgroundColor: 'rgba(255,255,255,0.02)',
+                    borderRadius: 8,
+                    marginBottom: 4
                 }}>
                     <TouchableOpacity
                         style={{
@@ -778,13 +791,13 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
                             flexDirection: 'row',
                             alignItems: 'center',
                             gap: 10,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10
+                            paddingHorizontal: 10,
+                            paddingVertical: isMobile ? 12 : 10
                         }}
                         onPress={() => { router.push(`/chat/${item.id}`); if(!isDesktop) onClose(); }}
                     >
                         <MessageSquare size={14} color={theme.secondary} />
-                        <Text style={{color: theme.textMuted, fontSize: 12, fontFamily: FONT_MONO, flex: 1}} numberOfLines={1}>
+                        <Text style={{color: theme.textMuted, fontSize: isMobile ? 12 : 12, fontFamily: FONT_MONO, flex: 1}} numberOfLines={1}>
                             {item.title || "Untitled"}
                         </Text>
                     </TouchableOpacity>
@@ -804,25 +817,24 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
                         )}
                     </TouchableOpacity>
                 </View>
+              ))
             )}
-            ListEmptyComponent={
-                <Text style={{color: theme.secondary, padding: 20, fontSize: 10, fontFamily: FONT_MONO, textAlign: 'center'}}>
-                    {searchQuery ? "NO_MATCHES" : "NO_DATA"}
-                </Text>
-            }
-        />
+          </View>
 
-        {/* New Premium Wallet Section */}
-        <WalletSidebarSection
-          user={user}
-          theme={theme}
-          isConnecting={isConnecting}
-          isAuthenticating={isAuthenticating}
-          onConnectWallet={connectWallet}
-          onLogout={logout}
-          currentBalance={currentBalance}
-          onAddCredits={() => { onOpenDepositModal(); if(!isDesktop) onClose(); }}
-        />
+          {/* New Premium Wallet Section - Compact on mobile */}
+          <View style={{ paddingHorizontal: isMobile ? 12 : 16, paddingBottom: isMobile ? 12 : 16 }}>
+            <WalletSidebarSection
+              user={user}
+              theme={theme}
+              isConnecting={isConnecting}
+              isAuthenticating={isAuthenticating}
+              onConnectWallet={connectWallet}
+              onLogout={logout}
+              currentBalance={currentBalance}
+              onAddCredits={() => { onOpenDepositModal(); if(!isDesktop) onClose(); }}
+            />
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </Animated.View>
   );
@@ -2011,6 +2023,7 @@ export default function ChatScreen() {
   } = useBilling();
   const { width } = useWindowDimensions();
   const isDesktop = width > 1024;
+  const isMobile = width < 600;
   
   const [models, setModels] = useState<Model[]>([]);
   const [filteredModels, setFilteredModels] = useState<Model[]>([]);
@@ -2465,7 +2478,7 @@ export default function ChatScreen() {
           />
       )}
 
-      <SafeAreaView style={{flex: 1, flexDirection: 'column', overflow: 'hidden'}}>
+      <SafeAreaView style={{flex: 1, flexDirection: 'column', overflow: 'hidden'}} edges={['top', 'left', 'right']}>
         {/* Modern Top Bar */}
         <View style={{
             height: 56,
@@ -2504,7 +2517,7 @@ export default function ChatScreen() {
                     ) : (
                         <Layers size={16} color={theme.primary} />
                     )}
-                    <Text style={{color: '#fff', fontSize: 14, fontWeight: '600'}}>
+                    <Text style={{color: '#fff', fontSize: 14, fontWeight: '600'}} numberOfLines={1}>
                         {selectedModels.length > 1 ? `${selectedModels.length} Models` : selectedModels[0]?.name?.split('/').pop() || "Select Model"}
                     </Text>
                     <ChevronDown color={theme.secondary} size={16} />
@@ -2537,8 +2550,8 @@ export default function ChatScreen() {
                 keyExtractor={item => item.id}
                 style={{width: '100%'}}
                 contentContainerStyle={{
-                    paddingVertical: 24,
-                    paddingHorizontal: 16,
+                    paddingVertical: isMobile ? 16 : 24,
+                    paddingHorizontal: isMobile ? 10 : 16,
                     maxWidth: isDesktop ? 900 : '100%',
                     alignSelf: 'center',
                     width: '100%'
@@ -2549,51 +2562,51 @@ export default function ChatScreen() {
                         flex: 1,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        paddingTop: isDesktop ? 120 : 80,
-                        paddingHorizontal: 32
+                        paddingTop: isDesktop ? 120 : (isMobile ? 40 : 80),
+                        paddingHorizontal: isMobile ? 20 : 32
                     }}>
                         <View style={{
-                            width: 80,
-                            height: 80,
-                            borderRadius: 20,
+                            width: isMobile ? 60 : 80,
+                            height: isMobile ? 60 : 80,
+                            borderRadius: isMobile ? 16 : 20,
                             backgroundColor: 'rgba(0, 255, 65, 0.1)',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            marginBottom: 24
+                            marginBottom: isMobile ? 16 : 24
                         }}>
-                            <Sparkles size={40} color={theme.primary} />
+                            <Sparkles size={isMobile ? 30 : 40} color={theme.primary} />
                         </View>
                         <Text style={{
                             color: '#fff',
-                            fontSize: 26,
+                            fontSize: isMobile ? 20 : 26,
                             fontWeight: 'bold',
-                            marginBottom: 12,
+                            marginBottom: isMobile ? 8 : 12,
                             textAlign: 'center'
                         }}>
                             How can I help you?
                         </Text>
                         <Text style={{
                             color: theme.secondary,
-                            fontSize: 15,
+                            fontSize: isMobile ? 13 : 15,
                             textAlign: 'center',
-                            lineHeight: 22,
+                            lineHeight: isMobile ? 20 : 22,
                             maxWidth: 400
                         }}>
                             Ask me anything. I can help with coding, writing, analysis, and more.
                         </Text>
 
-                        {/* Quick Actions */}
+                        {/* Quick Actions - Hide detailed text on mobile */}
                         <View style={{
                             flexDirection: 'row',
                             flexWrap: 'wrap',
                             justifyContent: 'center',
-                            gap: 10,
-                            marginTop: 32
+                            gap: isMobile ? 8 : 10,
+                            marginTop: isMobile ? 24 : 32
                         }}>
                             {[
-                                {icon: Globe, text: 'Search the web', action: () => setWebSearchEnabled(true)},
-                                {icon: Brain, text: 'Explain a concept'},
-                                {icon: FileText, text: 'Write content'},
+                                {icon: Globe, text: isMobile ? 'Web' : 'Search the web', action: () => setWebSearchEnabled(true)},
+                                {icon: Brain, text: isMobile ? 'Explain' : 'Explain a concept'},
+                                {icon: FileText, text: isMobile ? 'Write' : 'Write content'},
                             ].map((item, i) => (
                                 <TouchableOpacity
                                     key={i}
@@ -2601,17 +2614,17 @@ export default function ChatScreen() {
                                     style={{
                                         flexDirection: 'row',
                                         alignItems: 'center',
-                                        gap: 8,
+                                        gap: isMobile ? 6 : 8,
                                         backgroundColor: 'rgba(255,255,255,0.03)',
                                         borderWidth: 1,
                                         borderColor: 'rgba(255,255,255,0.08)',
-                                        paddingHorizontal: 16,
-                                        paddingVertical: 12,
+                                        paddingHorizontal: isMobile ? 12 : 16,
+                                        paddingVertical: isMobile ? 10 : 12,
                                         borderRadius: 12
                                     }}
                                 >
-                                    <item.icon size={16} color={theme.secondary} />
-                                    <Text style={{color: theme.secondary, fontSize: 13}}>{item.text}</Text>
+                                    <item.icon size={isMobile ? 14 : 16} color={theme.secondary} />
+                                    <Text style={{color: theme.secondary, fontSize: isMobile ? 12 : 13}}>{item.text}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
