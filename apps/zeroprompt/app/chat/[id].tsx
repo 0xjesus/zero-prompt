@@ -2587,7 +2587,7 @@ export default function ChatScreen() {
             justifyContent: 'space-between',
             paddingHorizontal: 16,
           }}>
-             <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
+             <View style={{flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, flexShrink: 1}}>
                 <TouchableOpacity
                     onPress={() => setSidebarOpen(!isSidebarOpen)}
                     style={{padding: 8, marginLeft: -8, flexDirection: 'row', alignItems: 'center', gap: 8}}
@@ -2601,26 +2601,29 @@ export default function ChatScreen() {
                         alignItems: 'center',
                         gap: 10,
                         backgroundColor: 'rgba(255,255,255,0.05)',
-                        paddingHorizontal: 14,
+                        paddingHorizontal: isMobile ? 10 : 14,
                         paddingVertical: 8,
                         borderRadius: 10,
                         borderWidth: 1,
-                        borderColor: 'rgba(255,255,255,0.08)'
+                        borderColor: 'rgba(255,255,255,0.08)',
+                        flex: 1,
+                        flexShrink: 1,
+                        maxWidth: isMobile ? 180 : 280
                     }}
                     onPress={() => setShowModelSelector(true)}
                 >
                     {selectedModels.length === 1 ? (
-                        <ModelLogo modelId={selectedModels[0]?.openrouterId} iconUrl={selectedModels[0]?.iconUrl} size={20} theme={theme} />
+                        <ModelLogo modelId={selectedModels[0]?.openrouterId} iconUrl={selectedModels[0]?.iconUrl} size={isMobile ? 18 : 20} theme={theme} />
                     ) : (
                         <Layers size={16} color={theme.primary} />
                     )}
-                    <Text style={{color: '#fff', fontSize: 14, fontWeight: '600'}} numberOfLines={1}>
+                    <Text style={{color: '#fff', fontSize: isMobile ? 12 : 14, fontWeight: '600', flex: 1}} numberOfLines={1} ellipsizeMode="tail">
                         {selectedModels.length > 1 ? `${selectedModels.length} Models` : selectedModels[0]?.name?.split('/').pop() || "Select Model"}
                     </Text>
                     <ChevronDown color={theme.secondary} size={16} />
                 </TouchableOpacity>
              </View>
-             <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+             <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0}}>
                 <TouchableOpacity
                     onPress={startNewChat}
                     style={{
@@ -2938,10 +2941,11 @@ export default function ChatScreen() {
                                 flexDirection: 'row',
                                 alignItems: 'center',
                                 gap: 6,
-                                paddingHorizontal: 12,
+                                paddingHorizontal: isMobile ? 8 : 12,
                                 paddingVertical: 8,
                                 borderRadius: 16,
-                                backgroundColor: 'transparent'
+                                backgroundColor: 'transparent',
+                                maxWidth: isMobile ? 140 : 200
                             }}
                         >
                             {selectedModels.length === 1 ? (
@@ -2951,8 +2955,9 @@ export default function ChatScreen() {
                             )}
                             <Text style={{
                                 color: 'rgba(255,255,255,0.5)',
-                                fontSize: 13
-                            }} numberOfLines={1}>
+                                fontSize: isMobile ? 11 : 13,
+                                flex: 1
+                            }} numberOfLines={1} ellipsizeMode="tail">
                                 {selectedModels.length > 1 ? `${selectedModels.length} models` : selectedModels[0]?.name?.split('/').pop() || 'Select'}
                             </Text>
                             <ChevronDown size={14} color="rgba(255,255,255,0.3)" />

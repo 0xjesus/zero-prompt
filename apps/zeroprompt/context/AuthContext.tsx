@@ -1,8 +1,37 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { Platform } from "react-native";
-import { useAccount, useDisconnect, useSignMessage } from "wagmi";
-import { useAppKit } from "@reown/appkit/react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_URL } from "../config/api";
+
+// Conditionally import wagmi hooks - they work on all platforms now via Web3Provider
+let useAccount: any = () => ({ address: undefined, isConnected: false, isConnecting: false });
+let useDisconnect: any = () => ({ disconnect: () => {} });
+let useSignMessage: any = () => ({ signMessageAsync: async () => "" });
+let useAppKit: any = () => ({ open: () => {} });
+
+try {
+  const wagmi = require("wagmi");
+  useAccount = wagmi.useAccount;
+  useDisconnect = wagmi.useDisconnect;
+  useSignMessage = wagmi.useSignMessage;
+
+  // Import AppKit hook based on platform
+  if (Platform.OS === "web") {
+    const appkit = require("@reown/appkit/react");
+    useAppKit = appkit.useAppKit;
+  } else {
+    // For React Native, use the RN-specific hook
+    try {
+      const appkitRN = require("@reown/appkit-wagmi-react-native");
+      useAppKit = appkitRN.useAppKit || (() => ({ open: () => {} }));
+    } catch {
+      // Fallback if RN AppKit not available
+      useAppKit = () => ({ open: () => console.log("[Auth] AppKit RN not available") });
+    }
+  }
+} catch (e) {
+  console.warn("[Auth] Wagmi hooks not available:", e);
+}
 
 type User = {
   walletAddress: string;
@@ -29,69 +58,158 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-// Helper to safely access localStorage
-const safeLocalStorage = {
-  getItem: (key: string): string | null => {
-    if (typeof window === 'undefined') return null;
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
+// Helper to safely access storage (localStorage on web, AsyncStorage on native)
+// For synchronous operations (initial state), we use an in-memory cache
+const storageCache: { [key: string]: string | null } = {};
+let storageCacheInitialized = false;
+
+const safeStorage = {
+  // Async get - always use this for actual storage reads
+  getItemAsync: async (key: string): Promise<string | null> => {
+    if (Platform.OS === "web") {
+      if (typeof window === 'undefined') return null;
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    } else {
+      try {
+        const value = await AsyncStorage.getItem(key);
+        storageCache[key] = value;
+        return value;
+      } catch {
+        return null;
+      }
     }
   },
-  setItem: (key: string, value: string): void => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(key, value);
-    } catch {
-      console.error('[Auth] Failed to save to localStorage');
+
+  // Sync get from cache (for initial state)
+  getItemSync: (key: string): string | null => {
+    if (Platform.OS === "web") {
+      if (typeof window === 'undefined') return null;
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    } else {
+      return storageCache[key] || null;
     }
   },
-  removeItem: (key: string): void => {
-    if (typeof window === 'undefined') return;
+
+  setItem: async (key: string, value: string): Promise<void> => {
+    storageCache[key] = value;
+    if (Platform.OS === "web") {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        console.error('[Auth] Failed to save to localStorage');
+      }
+    } else {
+      try {
+        await AsyncStorage.setItem(key, value);
+      } catch {
+        console.error('[Auth] Failed to save to AsyncStorage');
+      }
+    }
+  },
+
+  removeItem: async (key: string): Promise<void> => {
+    delete storageCache[key];
+    if (Platform.OS === "web") {
+      if (typeof window === 'undefined') return;
+      try {
+        localStorage.removeItem(key);
+      } catch {}
+    } else {
+      try {
+        await AsyncStorage.removeItem(key);
+      } catch {}
+    }
+  },
+
+  // Initialize cache from AsyncStorage (call once on app start)
+  initCache: async (): Promise<void> => {
+    if (storageCacheInitialized || Platform.OS === "web") return;
     try {
-      localStorage.removeItem(key);
-    } catch {}
+      const keys = ["session_token", "wallet_address", "guest_id"];
+      const results = await AsyncStorage.multiGet(keys);
+      results.forEach(([key, value]) => {
+        storageCache[key] = value;
+      });
+      storageCacheInitialized = true;
+      console.log("[Auth] Storage cache initialized");
+    } catch (e) {
+      console.error("[Auth] Failed to initialize storage cache:", e);
+    }
   }
 };
 
 // Inner component that uses wagmi hooks (must be inside WagmiProvider)
 const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
-  // Initialize ALL state synchronously from localStorage to prevent hydration issues
+  const [storageReady, setStorageReady] = useState(Platform.OS === "web");
+
+  // Initialize ALL state synchronously from cache/localStorage
   const [user, setUser] = useState<User | null>(() => {
-    if (typeof window !== 'undefined' && Platform.OS === 'web') {
-      const savedWallet = safeLocalStorage.getItem("wallet_address");
-      const savedToken = safeLocalStorage.getItem("session_token");
-      if (savedWallet && savedToken) {
-        return {
-          walletAddress: savedWallet,
-          messageCount: 0,
-          isPremium: false
-        };
-      }
+    const savedWallet = safeStorage.getItemSync("wallet_address");
+    const savedToken = safeStorage.getItemSync("session_token");
+    if (savedWallet && savedToken) {
+      return {
+        walletAddress: savedWallet,
+        messageCount: 0,
+        isPremium: false
+      };
     }
     return null;
   });
 
   const [token, setToken] = useState<string | null>(() => {
-    if (typeof window !== 'undefined' && Platform.OS === 'web') {
-      return safeLocalStorage.getItem("session_token");
-    }
-    return null;
+    return safeStorage.getItemSync("session_token");
   });
 
-  // Initialize guestId synchronously to prevent 401 on first render
+  // Initialize guestId
   const [guestId, setGuestId] = useState<string | null>(() => {
-    if (typeof window !== 'undefined' && Platform.OS === 'web') {
-      let gid = safeLocalStorage.getItem("guest_id");
+    if (Platform.OS === "web") {
+      let gid = safeStorage.getItemSync("guest_id");
       if (!gid) {
         gid = Math.random().toString(36).substring(2) + Date.now().toString(36);
-        safeLocalStorage.setItem("guest_id", gid);
+        safeStorage.setItem("guest_id", gid);
       }
       return gid;
     }
-    return null;
+    return null; // Will be set after async init for native
   });
+
+  // Initialize storage cache for native platforms
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      safeStorage.initCache().then(async () => {
+        // Load saved state from AsyncStorage
+        const savedToken = await safeStorage.getItemAsync("session_token");
+        const savedWallet = await safeStorage.getItemAsync("wallet_address");
+        let savedGuestId = await safeStorage.getItemAsync("guest_id");
+
+        if (savedToken && savedWallet) {
+          setToken(savedToken);
+          setUser({
+            walletAddress: savedWallet,
+            messageCount: 0,
+            isPremium: false
+          });
+        }
+
+        if (!savedGuestId) {
+          savedGuestId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+          await safeStorage.setItem("guest_id", savedGuestId);
+        }
+        setGuestId(savedGuestId);
+        setStorageReady(true);
+        console.log("[Auth] Native storage initialized");
+      });
+    }
+  }, []);
 
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
@@ -131,8 +249,8 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
       } else if (res.status === 401) {
         // Session expired, clear it
         console.log("[Auth] ⚠️ Session expired, clearing...");
-        safeLocalStorage.removeItem("session_token");
-        safeLocalStorage.removeItem("wallet_address");
+        safeStorage.removeItem("session_token");
+        safeStorage.removeItem("wallet_address");
         setToken(null);
         setUser(null);
         sessionVerified.current = false;
@@ -154,16 +272,19 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
 
   // Verify session on mount and periodically
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (!storageReady) return;
 
-    const savedToken = safeLocalStorage.getItem("session_token");
-    if (savedToken && !sessionVerified.current) {
-      verifySession(savedToken);
-    }
+    const initVerify = async () => {
+      const savedToken = await safeStorage.getItemAsync("session_token");
+      if (savedToken && !sessionVerified.current) {
+        verifySession(savedToken);
+      }
+    };
+    initVerify();
 
     // Verify session every 5 minutes
-    verifyInterval.current = setInterval(() => {
-      const currentToken = safeLocalStorage.getItem("session_token");
+    verifyInterval.current = setInterval(async () => {
+      const currentToken = await safeStorage.getItemAsync("session_token");
       if (currentToken) {
         verifySession(currentToken);
       }
@@ -174,7 +295,7 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
         clearInterval(verifyInterval.current);
       }
     };
-  }, [verifySession]);
+  }, [verifySession, storageReady]);
 
   // Authenticate with backend when wallet connects
   const authenticateWithBackend = useCallback(async (walletAddress: string, retryCount = 0) => {
@@ -203,8 +324,8 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
     }
 
     // Check if we already have a valid session for this wallet
-    const savedToken = safeLocalStorage.getItem("session_token");
-    const savedWallet = safeLocalStorage.getItem("wallet_address");
+    const savedToken = await safeStorage.getItemAsync("session_token");
+    const savedWallet = await safeStorage.getItemAsync("wallet_address");
     if (savedToken && savedWallet?.toLowerCase() === walletAddress.toLowerCase()) {
       console.log("[Auth] ✅ Already have session for this wallet, verifying...");
       const isValid = await verifySession(savedToken);
@@ -217,8 +338,8 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
     // Clear any mismatched session before authenticating
     if (savedWallet && savedWallet.toLowerCase() !== walletAddress.toLowerCase()) {
       console.log("[Auth] 🧹 Clearing mismatched session:", savedWallet, "→", walletAddress);
-      safeLocalStorage.removeItem("session_token");
-      safeLocalStorage.removeItem("wallet_address");
+      await safeStorage.removeItem("session_token");
+      await safeStorage.removeItem("wallet_address");
       setToken(null);
       setUser(null);
     }
@@ -263,7 +384,7 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
       console.log("[Auth] ✅ Signature obtained");
 
       // Step 3: Verify with backend (include guestId for migration)
-      const currentGuestId = safeLocalStorage.getItem("guest_id");
+      const currentGuestId = await safeStorage.getItemAsync("guest_id");
 
       let verifyData;
       for (let i = 0; i <= maxRetries; i++) {
@@ -295,14 +416,14 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
       console.log("[Auth] ✅ Verification successful!");
 
       // Store session
-      safeLocalStorage.setItem("session_token", verifyData.sessionToken);
-      safeLocalStorage.setItem("wallet_address", walletAddress);
+      await safeStorage.setItem("session_token", verifyData.sessionToken);
+      await safeStorage.setItem("wallet_address", walletAddress);
 
       // Clear guest ID after successful migration
       if (verifyData.migratedConversations > 0) {
         console.log(`[Auth] 🔄 Migrated ${verifyData.migratedConversations} conversations!`);
         setMigratedChats(verifyData.migratedConversations);
-        safeLocalStorage.removeItem("guest_id");
+        await safeStorage.removeItem("guest_id");
         setGuestId(null);
       }
 
@@ -337,7 +458,7 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
 
   // Watch for wallet connection changes
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (!storageReady) return;
 
     // Don't do anything if auth is already in progress or signature was requested
     if (authInProgress.current || signatureRequested.current) {
@@ -353,46 +474,53 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
       }
 
       // Check if we have a valid saved session for this wallet
-      const savedToken = safeLocalStorage.getItem("session_token");
-      const savedWallet = safeLocalStorage.getItem("wallet_address");
-      if (savedToken && savedWallet?.toLowerCase() === address.toLowerCase()) {
-        console.log("[Auth] ✅ Found existing session, verifying...");
-        verifySession(savedToken).then(isValid => {
+      const checkExistingSession = async () => {
+        const savedToken = await safeStorage.getItemAsync("session_token");
+        const savedWallet = await safeStorage.getItemAsync("wallet_address");
+        if (savedToken && savedWallet?.toLowerCase() === address.toLowerCase()) {
+          console.log("[Auth] ✅ Found existing session, verifying...");
+          const isValid = await verifySession(savedToken);
           if (isValid) {
             setToken(savedToken);
             lastAuthenticatedAddress.current = address;
           }
-        });
-        return;
-      }
-
-      // Wallet just connected, authenticate with backend
-      const timeoutId = setTimeout(() => {
-        if (!authInProgress.current && !signatureRequested.current && !user) {
-          console.log("[Auth] 🔗 Wallet connected, starting auth for:", address);
-          lastAuthenticatedAddress.current = address;
-          authenticateWithBackend(address);
+          return true;
         }
-      }, 500); // Increased delay to prevent race conditions
-      return () => clearTimeout(timeoutId);
+        return false;
+      };
+
+      checkExistingSession().then(hasSession => {
+        if (!hasSession) {
+          // Wallet just connected, authenticate with backend
+          const timeoutId = setTimeout(() => {
+            if (!authInProgress.current && !signatureRequested.current && !user) {
+              console.log("[Auth] 🔗 Wallet connected, starting auth for:", address);
+              lastAuthenticatedAddress.current = address;
+              authenticateWithBackend(address);
+            }
+          }, 500); // Increased delay to prevent race conditions
+          return () => clearTimeout(timeoutId);
+        }
+      });
     } else if (!isConnected && user) {
-      // Wallet disconnected - keep session if we have a valid token
-      const savedToken = safeLocalStorage.getItem("session_token");
-      if (savedToken) {
-        console.log("[Auth] ⚠️ Wallet disconnected but session exists - staying logged in");
-      } else {
-        console.log("[Auth] 🔌 Wallet disconnected (no session), logging out");
-        handleLogout();
-      }
+      // Wallet disconnected - check if we have a valid session
+      safeStorage.getItemAsync("session_token").then(savedToken => {
+        if (savedToken) {
+          console.log("[Auth] ⚠️ Wallet disconnected but session exists - staying logged in");
+        } else {
+          console.log("[Auth] 🔌 Wallet disconnected (no session), logging out");
+          handleLogout();
+        }
+      });
     } else if (!isConnected && !user) {
       // Reset the last authenticated address when fully disconnected
       lastAuthenticatedAddress.current = null;
     }
-  }, [isConnected, address, user, authenticateWithBackend, verifySession]);
+  }, [isConnected, address, user, authenticateWithBackend, verifySession, storageReady]);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
     // Call backend logout
-    const currentToken = safeLocalStorage.getItem("session_token");
+    const currentToken = await safeStorage.getItemAsync("session_token");
     if (currentToken) {
       fetch(`${API_URL}/wallet/logout`, {
         method: "POST",
@@ -407,18 +535,18 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
     lastAuthenticatedAddress.current = null; // Reset to allow re-auth
     authInProgress.current = false;
     signatureRequested.current = false;
-    safeLocalStorage.removeItem("session_token");
-    safeLocalStorage.removeItem("wallet_address");
+    await safeStorage.removeItem("session_token");
+    await safeStorage.removeItem("wallet_address");
 
     // Regenerate guest ID
     const newGuestId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    safeLocalStorage.setItem("guest_id", newGuestId);
+    await safeStorage.setItem("guest_id", newGuestId);
     setGuestId(newGuestId);
   }, []);
 
-  const refreshUser = useCallback(() => {
+  const refreshUser = useCallback(async () => {
     // Re-verify session to get fresh data
-    const currentToken = safeLocalStorage.getItem("session_token");
+    const currentToken = await safeStorage.getItemAsync("session_token");
     if (currentToken) {
       verifySession(currentToken);
     }
@@ -473,46 +601,10 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// Fallback provider for non-web platforms
-const AuthProviderFallback = ({ children }: { children: React.ReactNode }) => {
-  const [guestId, setGuestId] = useState<string | null>(() => {
-    return Math.random().toString(36).substring(2) + Date.now().toString(36);
-  });
-
-  const getHeaders = useCallback(() => {
-    const headers: any = { "Content-Type": "application/json" };
-    if (guestId) headers["x-guest-id"] = guestId;
-    return headers;
-  }, [guestId]);
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user: null,
-        token: null,
-        guestId,
-        isConnecting: false,
-        isAuthenticating: false,
-        connectionError: null,
-        migratedChats: null,
-        getHeaders,
-        openWalletModal: () => {},
-        connectWallet: async () => {},
-        logout: () => {},
-        refreshUser: () => {},
-        clearMigratedChats: () => {}
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-// Main AuthProvider
+// Main AuthProvider - Now supports web and native (Android/iOS)
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  if (Platform.OS !== "web") {
-    return <AuthProviderFallback>{children}</AuthProviderFallback>;
-  }
+  // Use full auth provider for web and native with wallet support
+  // AuthProviderInner uses wagmi hooks which now work on all platforms via Web3Provider
   return <AuthProviderInner>{children}</AuthProviderInner>;
 };
 
