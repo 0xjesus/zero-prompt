@@ -29,7 +29,7 @@ import {
   Settings, X, Plus, Cpu, ChevronRight, ChevronDown, ChevronUp,
   MessageSquare, Copy, RefreshCw, Lock, Check, Maximize2, Minimize2,
   Image as ImageIcon, FileText, Box, Search, Globe, Brain, Mic, Layers, Grid, Layout,
-  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code, Star, Home
+  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code, Star, Home, Download
 } from 'lucide-react-native';
 
 // ZeroPrompt Logo
@@ -1255,6 +1255,56 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
         );
     }
 
+    // Export all responses as formatted text
+    const exportAllResponses = useCallback(() => {
+        if (!item.responses || item.responses.length === 0) return;
+
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        let content = `# ZeroPrompt AI Comparison Results\n`;
+        content += `Generated: ${new Date().toLocaleString()}\n`;
+        content += `Models: ${item.responses.length}\n`;
+        content += `\n${'='.repeat(60)}\n\n`;
+
+        item.responses.forEach((res: any, idx: number) => {
+            const modelName = res.modelName?.split('/').pop() || res.modelName || `Model ${idx + 1}`;
+            content += `## ${idx + 1}. ${modelName}\n`;
+            content += `-`.repeat(40) + `\n\n`;
+
+            if (res.status === 'done' && res.content) {
+                content += res.content;
+            } else if (res.status === 'streaming') {
+                content += `[Still generating...]\n${res.content || ''}`;
+            } else if (res.status === 'error') {
+                content += `[Error: ${res.error || 'Unknown error'}]`;
+            } else {
+                content += `[Pending...]`;
+            }
+
+            if (res.billing?.costUSD) {
+                content += `\n\n💰 Cost: $${parseFloat(res.billing.costUSD).toFixed(6)}`;
+            }
+
+            content += `\n\n${'='.repeat(60)}\n\n`;
+        });
+
+        content += `\n---\nExported from ZeroPrompt (https://zeroprompt.app)\n`;
+
+        // Copy to clipboard and optionally download
+        if (Platform.OS === 'web') {
+            navigator.clipboard.writeText(content);
+            // Also trigger download
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `zeroprompt-comparison-${timestamp}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    }, [item.responses]);
+
     if (item.role === 'comparison' && item.responses) {
         const responses = item.responses;
         const streamingCount = responses.filter((r: any) => r.status === 'streaming').length;
@@ -1268,7 +1318,9 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        marginBottom: 16
+                        marginBottom: 16,
+                        flexWrap: 'wrap',
+                        gap: 12
                     }}>
                         <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
                             <Sparkles size={18} color={theme.primary} />
@@ -1290,10 +1342,30 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
                                 </View>
                             )}
                         </View>
-                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
                             <Text style={{color: theme.secondary, fontSize: 12}}>
                                 {completedCount}/{responses.length} complete
                             </Text>
+
+                            {/* Export All Button */}
+                            <TouchableOpacity
+                                onPress={exportAllResponses}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 6,
+                                    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                                    borderRadius: 8,
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(139, 92, 246, 0.3)'
+                                }}
+                            >
+                                <FileText size={14} color="#8B5CF6" />
+                                <Text style={{color: '#8B5CF6', fontSize: 11, fontWeight: '600', fontFamily: FONT_MONO}}>Export All</Text>
+                            </TouchableOpacity>
+
                             {/* View Mode Toggle */}
                             <View style={{
                                 flexDirection: 'row',
@@ -1341,76 +1413,38 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
                                         fontSize: 11,
                                         fontWeight: viewMode === 'grid' ? '600' : '400',
                                         fontFamily: FONT_MONO
-                                    }}>Side by Side</Text>
+                                    }}>Grid</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
                     </View>
 
-                    {/* Grid View - All responses side by side */}
+                    {/* Grid View - All responses side by side - FULL WIDTH */}
                     {viewMode === 'grid' && (
                         // @ts-ignore - web specific CSS values
                         <View style={{
-                            position: 'relative',
-                            // When sidebar is open on desktop, don't break out of container
-                            // to avoid overlapping with sidebar
-                            marginLeft: (isSidebarOpen && isDesktop) ? 0 : 'calc(-50vw + 50%)',
-                            marginRight: (isSidebarOpen && isDesktop) ? 0 : 'calc(-50vw + 50%)',
-                            width: (isSidebarOpen && isDesktop) ? '100%' : '100vw',
-                            paddingHorizontal: 24,
-                            zIndex: 1
+                            // Full width grid that respects viewport
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            gap: 16,
+                            justifyContent: 'flex-start'
                         }}>
-                            {/* Gradient fade indicators */}
-                            <View style={{
-                                position: 'absolute',
-                                left: 0,
-                                top: 0,
-                                bottom: 0,
-                                width: 60,
-                                zIndex: 10,
-                                // @ts-ignore
-                                background: 'linear-gradient(90deg, rgba(13,13,13,1) 0%, rgba(13,13,13,0.8) 40%, transparent 100%)',
-                                pointerEvents: 'none'
-                            }} />
-                            <View style={{
-                                position: 'absolute',
-                                right: 0,
-                                top: 0,
-                                bottom: 0,
-                                width: 60,
-                                zIndex: 10,
-                                // @ts-ignore
-                                background: 'linear-gradient(270deg, rgba(13,13,13,1) 0%, rgba(13,13,13,0.8) 40%, transparent 100%)',
-                                pointerEvents: 'none'
-                            }} />
-                            <ScrollView
-                                horizontal
-                                showsHorizontalScrollIndicator={true}
-                                style={{
-                                    paddingVertical: 8,
-                                    // @ts-ignore - web specific
-                                    ...customScrollbarStyle
-                                }}
-                                contentContainerStyle={{
-                                    paddingHorizontal: 40,
-                                    gap: 24
-                                }}
-                            >
                                 {responses.map((res: any, idx: number) => {
                                     const isStreaming = res.status === 'streaming';
                                     const isDone = res.status === 'done';
                                     const hasError = res.status === 'error';
 
-                                    // Calculate card width based on number of responses
-                                    const cardWidth = responses.length <= 2 ? 600 : responses.length === 3 ? 500 : 450;
+                                    // Cards take full width / number of models, min 400px
+                                    // 2 models = 50% each, 3+ models = 33% each (but scrollable)
+                                    const cardWidth = responses.length === 2 ? 'calc(50% - 8px)' : responses.length === 3 ? 'calc(33.33% - 11px)' : 'calc(50% - 8px)';
 
                                     return (
                                         <View
                                             key={idx}
+                                            // @ts-ignore - web CSS
                                             style={{
                                                 width: cardWidth,
-                                                minWidth: cardWidth,
-                                                flexShrink: 0,
+                                                minWidth: 380,
                                                 backgroundColor: 'rgba(255,255,255,0.02)',
                                                 borderWidth: 1,
                                                 borderColor: isStreaming
@@ -1420,9 +1454,9 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
                                                         : hasError
                                                             ? 'rgba(255, 68, 68, 0.3)'
                                                             : 'rgba(255,255,255,0.08)',
-                                                borderRadius: 20,
+                                                borderRadius: 16,
                                                 overflow: 'hidden',
-                                                maxHeight: 600,
+                                                maxHeight: 700,
                                                 // @ts-ignore
                                                 boxShadow: isStreaming
                                                     ? '0 0 20px rgba(255, 193, 7, 0.15)'
@@ -1532,7 +1566,6 @@ const ChatBubble = ({ item, theme, isSidebarOpen }: any) => {
                                         </View>
                                     );
                                 })}
-                            </ScrollView>
                         </View>
                     )}
 

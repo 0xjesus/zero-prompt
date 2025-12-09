@@ -8,7 +8,7 @@ import { getAddress, parseEther } from 'viem';
 import Markdown from 'react-native-markdown-display';
 import {
   Swords, Brain, ImageIcon, CheckCircle, XCircle,
-  Users, Trophy, AlertCircle, Plus, Copy, Terminal, ChevronDown, ChevronUp, Download, Share2
+  Users, Trophy, AlertCircle, Plus, Copy, Terminal, ChevronDown, ChevronUp, Download, Share2, FileText
 } from 'lucide-react-native';
 import { API_URL } from '../config/api';
 import { MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/constants';
