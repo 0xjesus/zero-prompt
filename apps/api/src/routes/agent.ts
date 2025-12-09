@@ -55,6 +55,183 @@ agentRouter.post('/quote', async (req, res) => {
 });
 
 // ============================================================================
+// MULTI-MODEL QUOTE ENDPOINTS - For Battle, Consensus, Gallery
+// ============================================================================
+
+// Quote for Model Battle (2-4 models, same prompt)
+agentRouter.post('/quote/battle', async (req, res) => {
+  try {
+    const { models, prompt } = req.body;
+
+    if (!models || !Array.isArray(models) || models.length < 2) {
+      return res.status(400).json({ error: 'At least 2 models required' });
+    }
+    if (models.length > 4) {
+      return res.status(400).json({ error: 'Maximum 4 models allowed' });
+    }
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    // Generate quote for each model
+    const quotes = await Promise.all(
+      models.map((modelId: string) => generateQuote({ model: modelId, prompt }))
+    );
+
+    // Sum up costs
+    const totalCostUSD = quotes.reduce((sum, q) => sum + q.pricing.totalCostUSD, 0);
+    const avaxPrice = quotes[0]?.pricing.avaxPrice || await getAvaxPrice();
+    const totalCostAVAX = totalCostUSD / avaxPrice;
+
+    res.json({
+      success: true,
+      type: 'battle',
+      modelCount: models.length,
+      models: quotes.map(q => ({
+        id: q.model.id,
+        name: q.model.name,
+        costUSD: q.pricing.totalCostUSD
+      })),
+      pricing: {
+        totalCostUSD,
+        avaxPrice,
+        totalCostAVAX
+      },
+      payment: {
+        recommendedUSDC: totalCostUSD.toFixed(4),
+        recommendedAVAX: getMinimumPaymentAVAX(totalCostAVAX).toFixed(6)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Battle quote failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Quote for AI Consensus (2-5 models + judge model)
+agentRouter.post('/quote/consensus', async (req, res) => {
+  try {
+    const { models, judge, prompt } = req.body;
+
+    if (!models || !Array.isArray(models) || models.length < 2) {
+      return res.status(400).json({ error: 'At least 2 models required' });
+    }
+    if (models.length > 5) {
+      return res.status(400).json({ error: 'Maximum 5 models allowed' });
+    }
+    if (!judge) {
+      return res.status(400).json({ error: 'Judge model is required' });
+    }
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    // Generate quote for each participant model
+    const modelQuotes = await Promise.all(
+      models.map((modelId: string) => generateQuote({ model: modelId, prompt }))
+    );
+
+    // Generate quote for judge (consensus analysis is ~2x longer prompt)
+    const judgeQuote = await generateQuote({
+      model: judge,
+      prompt: prompt + ' '.repeat(prompt.length * 2), // Estimate longer input for analysis
+      maxOutputTokens: 500
+    });
+
+    // Sum up costs
+    const modelsCost = modelQuotes.reduce((sum, q) => sum + q.pricing.totalCostUSD, 0);
+    const judgeCost = judgeQuote.pricing.totalCostUSD;
+    const totalCostUSD = modelsCost + judgeCost;
+    const avaxPrice = modelQuotes[0]?.pricing.avaxPrice || await getAvaxPrice();
+    const totalCostAVAX = totalCostUSD / avaxPrice;
+
+    res.json({
+      success: true,
+      type: 'consensus',
+      modelCount: models.length,
+      models: modelQuotes.map(q => ({
+        id: q.model.id,
+        name: q.model.name,
+        costUSD: q.pricing.totalCostUSD
+      })),
+      judge: {
+        id: judgeQuote.model.id,
+        name: judgeQuote.model.name,
+        costUSD: judgeCost
+      },
+      pricing: {
+        modelsCostUSD: modelsCost,
+        judgeCostUSD: judgeCost,
+        totalCostUSD,
+        avaxPrice,
+        totalCostAVAX
+      },
+      payment: {
+        recommendedUSDC: totalCostUSD.toFixed(4),
+        recommendedAVAX: getMinimumPaymentAVAX(totalCostAVAX).toFixed(6)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Consensus quote failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Quote for Image Gallery (1-4 image models)
+agentRouter.post('/quote/gallery', async (req, res) => {
+  try {
+    const { models, prompt } = req.body;
+
+    if (!models || !Array.isArray(models) || models.length < 1) {
+      return res.status(400).json({ error: 'At least 1 model required' });
+    }
+    if (models.length > 4) {
+      return res.status(400).json({ error: 'Maximum 4 models allowed' });
+    }
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    // Generate quote for each image model
+    const quotes = await Promise.all(
+      models.map((modelId: string) => generateQuote({ model: modelId, prompt, imageCount: 1 }))
+    );
+
+    // Sum up costs
+    const totalCostUSD = quotes.reduce((sum, q) => sum + q.pricing.totalCostUSD, 0);
+    const avaxPrice = quotes[0]?.pricing.avaxPrice || await getAvaxPrice();
+    const totalCostAVAX = totalCostUSD / avaxPrice;
+
+    res.json({
+      success: true,
+      type: 'gallery',
+      modelCount: models.length,
+      models: quotes.map(q => ({
+        id: q.model.id,
+        name: q.model.name,
+        costUSD: q.pricing.totalCostUSD,
+        isImage: q.model.type === 'image'
+      })),
+      pricing: {
+        totalCostUSD,
+        avaxPrice,
+        totalCostAVAX
+      },
+      payment: {
+        recommendedUSDC: totalCostUSD.toFixed(4),
+        recommendedAVAX: getMinimumPaymentAVAX(totalCostAVAX).toFixed(6)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Gallery quote failed:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================================================
 // AVAX PRICE ENDPOINT - Get current AVAX price
 // ============================================================================
 agentRouter.get('/avax-price', async (_req, res) => {

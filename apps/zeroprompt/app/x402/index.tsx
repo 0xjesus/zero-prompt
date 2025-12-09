@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   StyleSheet, Platform, Image, useWindowDimensions, ActivityIndicator, Modal
@@ -14,7 +14,7 @@ import {
   Layers, Code, Shield, Zap, ChevronDown, Copy, Check, Terminal, FileCode,
   Play, Wallet, ArrowRight, CheckCircle, Loader, AlertCircle,
   ExternalLink, Sparkles, DollarSign, Lock, Globe, ChevronRight,
-  MessageSquare, Home, Bot, Cpu, CreditCard, Star, Image as ImageIcon
+  MessageSquare, Home, Bot, Cpu, Star
 } from 'lucide-react-native';
 
 import ModelSelectorModal from '../../components/ModelSelectorModal';
@@ -173,6 +173,7 @@ export default function ProtocolPage() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isDesktop = width > 1024;
+  const isMobile = width < 600;
 
   // Wallet - Use the same auth system as /chat
   const { address, isConnected } = useAccount();
@@ -934,52 +935,56 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* NAVBAR */}
-      <View style={styles.navbar}>
+      {/* NAVBAR - Mobile Optimized */}
+      <View style={[styles.navbar, isMobile && styles.navbarMobile]}>
         <TouchableOpacity onPress={() => router.push('/home')} style={styles.navBrand}>
           <Image
             source={require('../../assets/logos/zero-prompt-logo.png')}
-            style={styles.navLogo}
+            style={[styles.navLogo, isMobile && { width: 28, height: 28 }]}
             resizeMode="contain"
           />
-          {isDesktop && <Text style={styles.navTitle}>ZeroPrompt</Text>}
-          <View style={styles.navBadge}>
-            <Text style={styles.navBadgeText}>API</Text>
+          {!isMobile && <Text style={styles.navTitle}>ZeroPrompt</Text>}
+          <View style={[styles.navBadge, isMobile && { paddingHorizontal: 6, paddingVertical: 2 }]}>
+            <Text style={[styles.navBadgeText, isMobile && { fontSize: 9 }]}>API</Text>
           </View>
         </TouchableOpacity>
 
-        <View style={[styles.navLinks, !isDesktop && { gap: 4 }]}>
-          <TouchableOpacity onPress={() => router.push('/home')} style={[styles.navLink, !isDesktop && { paddingHorizontal: 8 }]}>
-            <Home size={16} color="#888" />
+        <View style={[styles.navLinks, isMobile && styles.navLinksMobile]}>
+          {/* Show only icons on mobile for nav items */}
+          <TouchableOpacity onPress={() => router.push('/home')} style={[styles.navLink, isMobile && styles.navLinkMobile]}>
+            <Home size={isMobile ? 18 : 16} color="#888" />
             {isDesktop && <Text style={styles.navLinkText}>Home</Text>}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/')} style={[styles.navLink, !isDesktop && { paddingHorizontal: 8 }]}>
-            <MessageSquare size={16} color="#888" />
+          <TouchableOpacity onPress={() => router.push('/')} style={[styles.navLink, isMobile && styles.navLinkMobile]}>
+            <MessageSquare size={isMobile ? 18 : 16} color="#888" />
             {isDesktop && <Text style={styles.navLinkText}>Chat</Text>}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/reputation')} style={[styles.navLink, !isDesktop && { paddingHorizontal: 8 }]}>
-            <Star size={16} color="#888" />
-            {isDesktop && <Text style={styles.navLinkText}>Reputation</Text>}
-          </TouchableOpacity>
-
-          {/* Add Credits Buttons - Available for everyone */}
-          {isConnected && (
-            <TouchableOpacity
-              onPress={() => openDepositModal()}
-              style={[styles.navLink, { backgroundColor: 'rgba(139, 92, 246, 0.1)', paddingHorizontal: isDesktop ? 12 : 8, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.2)' }]}
-            >
-              <Wallet size={16} color="#8B5CF6" />
-              {isDesktop && <Text style={[styles.navLinkText, { color: '#8B5CF6', fontWeight: '700' }]}>Crypto</Text>}
+          {!isMobile && (
+            <TouchableOpacity onPress={() => router.push('/reputation')} style={[styles.navLink, !isDesktop && { paddingHorizontal: 8 }]}>
+              <Star size={16} color="#888" />
+              {isDesktop && <Text style={styles.navLinkText}>Reputation</Text>}
             </TouchableOpacity>
           )}
+
+          {/* Wallet/Connect Button - Always visible */}
           {isConnected ? (
             <>
+              {/* Deposit button - hide on small mobile */}
+              {!isMobile && (
+                <TouchableOpacity
+                  onPress={() => openDepositModal()}
+                  style={[styles.navLink, { backgroundColor: 'rgba(139, 92, 246, 0.1)', paddingHorizontal: isDesktop ? 12 : 8, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.2)' }]}
+                >
+                  <Wallet size={16} color="#8B5CF6" />
+                  {isDesktop && <Text style={[styles.navLinkText, { color: '#8B5CF6', fontWeight: '700' }]}>Crypto</Text>}
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={[styles.walletConnected, !isDesktop && { paddingHorizontal: 8 }]}
+                style={[styles.walletConnected, isMobile && styles.walletConnectedMobile]}
                 onPress={() => setShowWalletMenu(true)}
               >
                 <View style={styles.walletDot} />
-                {isDesktop && <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>}
+                {!isMobile && <Text style={styles.walletAddress}>{address?.slice(0, 6)}...{address?.slice(-4)}</Text>}
               </TouchableOpacity>
               <Modal
                 visible={showWalletMenu}
@@ -992,9 +997,23 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
                   activeOpacity={1}
                   onPress={() => setShowWalletMenu(false)}
                 >
-                  <View style={styles.walletModalContent}>
+                  <View style={[styles.walletModalContent, isMobile && { width: '95%', maxWidth: 320 }]}>
                     <Text style={styles.walletModalTitle}>Wallet Connected</Text>
-                    <Text style={styles.walletModalAddress}>{address}</Text>
+                    <Text style={[styles.walletModalAddress, isMobile && { fontSize: 10 }]}>{address}</Text>
+
+                    {/* Add deposit option in modal for mobile */}
+                    {isMobile && (
+                      <TouchableOpacity
+                        style={[styles.disconnectBtn, { backgroundColor: '#8B5CF6', marginBottom: 8 }]}
+                        onPress={() => {
+                          setShowWalletMenu(false);
+                          openDepositModal();
+                        }}
+                      >
+                        <Text style={styles.disconnectBtnText}>Add Credits</Text>
+                      </TouchableOpacity>
+                    )}
+
                     <TouchableOpacity
                       style={styles.disconnectBtn}
                       onPress={() => {
@@ -1016,7 +1035,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             </>
           ) : (
             <TouchableOpacity
-              style={[styles.connectBtn, !isDesktop && { paddingHorizontal: 10 }]}
+              style={[styles.connectBtn, isMobile && styles.connectBtnMobile]}
               onPress={openWalletModal}
               disabled={isConnecting || isAuthenticating}
             >
@@ -1024,8 +1043,8 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
                 <ActivityIndicator size="small" color="#000" />
               ) : (
                 <>
-                  <Wallet size={16} color="#000" />
-                  {isDesktop && <Text style={styles.connectBtnText}>Connect</Text>}
+                  <Wallet size={isMobile ? 18 : 16} color="#000" />
+                  {!isMobile && <Text style={styles.connectBtnText}>Connect</Text>}
                 </>
               )}
             </TouchableOpacity>
@@ -1033,64 +1052,66 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile]} showsVerticalScrollIndicator={false}>
 
         {/* ============================================================
-            HERO SECTION
+            HERO SECTION - Mobile Optimized
         ============================================================ */}
-        <View style={styles.heroSection}>
+        <View style={[styles.heroSection, isMobile && styles.heroSectionMobile]}>
           <LinearGradient
             colors={['rgba(0, 255, 65, 0.1)', 'rgba(139, 92, 246, 0.1)', 'transparent']}
             style={styles.heroGradient}
           />
 
-          <View style={styles.heroBadge}>
-            <Bot size={14} color="#00FF41" />
-            <Text style={[styles.heroBadgeText, { color: '#00FF41' }]}>Decentralized AI API for Agents</Text>
+          <View style={[styles.heroBadge, isMobile && { paddingHorizontal: 12, paddingVertical: 6 }]}>
+            <Bot size={isMobile ? 12 : 14} color="#00FF41" />
+            <Text style={[styles.heroBadgeText, { color: '#00FF41' }, isMobile && { fontSize: 11 }]}>
+              {isMobile ? 'Decentralized AI API' : 'Decentralized AI API for Agents'}
+            </Text>
           </View>
 
-          <Text style={styles.heroTitle}>
+          <Text style={[styles.heroTitle, isMobile && styles.heroTitleMobile]}>
             ZeroPrompt{'\n'}
             <Text style={{ color: '#00FF41' }}>Agent API</Text>
           </Text>
 
-          <Text style={styles.heroSubtitle}>
-            The decentralized API that lets AI agents access 300+ models{'\n'}
-            without API keys, accounts, or subscriptions.{'\n'}
-            <Text style={{ color: '#8B5CF6' }}>Powered by x402 micropayments.</Text>
+          <Text style={[styles.heroSubtitle, isMobile && styles.heroSubtitleMobile]}>
+            {isMobile
+              ? 'Access 300+ AI models without API keys. Pay per request with crypto.'
+              : `The decentralized API that lets AI agents access 300+ models\nwithout API keys, accounts, or subscriptions.\n`}
+            {!isMobile && <Text style={{ color: '#8B5CF6' }}>Powered by x402 micropayments.</Text>}
           </Text>
 
-          <View style={styles.heroStats}>
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>300+</Text>
-              <Text style={styles.heroStatLabel}>AI Models</Text>
+          <View style={[styles.heroStats, isMobile && styles.heroStatsMobile]}>
+            <View style={[styles.heroStat, isMobile && { paddingHorizontal: 12 }]}>
+              <Text style={[styles.heroStatValue, isMobile && { fontSize: 22 }]}>300+</Text>
+              <Text style={[styles.heroStatLabel, isMobile && { fontSize: 10 }]}>Models</Text>
             </View>
-            <View style={styles.heroStatDivider} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>0</Text>
-              <Text style={styles.heroStatLabel}>API Keys Needed</Text>
+            <View style={[styles.heroStatDivider, isMobile && { height: 30 }]} />
+            <View style={[styles.heroStat, isMobile && { paddingHorizontal: 12 }]}>
+              <Text style={[styles.heroStatValue, isMobile && { fontSize: 22 }]}>0</Text>
+              <Text style={[styles.heroStatLabel, isMobile && { fontSize: 10 }]}>API Keys</Text>
             </View>
-            <View style={styles.heroStatDivider} />
-            <View style={styles.heroStat}>
-              <Text style={styles.heroStatValue}>∞</Text>
-              <Text style={styles.heroStatLabel}>Agent Compatible</Text>
+            <View style={[styles.heroStatDivider, isMobile && { height: 30 }]} />
+            <View style={[styles.heroStat, isMobile && { paddingHorizontal: 12 }]}>
+              <Text style={[styles.heroStatValue, isMobile && { fontSize: 22 }]}>∞</Text>
+              <Text style={[styles.heroStatLabel, isMobile && { fontSize: 10 }]}>Compatible</Text>
             </View>
           </View>
 
-          {/* CTA Buttons */}
-          <View style={styles.heroCTAs}>
-            <TouchableOpacity style={styles.primaryCTA} onPress={() => {
-              // Scroll to console section
+          {/* CTA Buttons - Stack on mobile */}
+          <View style={[styles.heroCTAs, isMobile && styles.heroCTAsMobile]}>
+            <TouchableOpacity style={[styles.primaryCTA, isMobile && styles.primaryCTAMobile]} onPress={() => {
               if (Platform.OS === 'web') {
                 document.getElementById('api-console')?.scrollIntoView({ behavior: 'smooth' });
               }
             }}>
-              <Play size={20} color="#000" />
-              <Text style={styles.primaryCTAText}>Try API Console</Text>
+              <Play size={isMobile ? 18 : 20} color="#000" />
+              <Text style={[styles.primaryCTAText, isMobile && { fontSize: 14 }]}>Try API Console</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryCTA} onPress={() => router.push('/')}>
-              <MessageSquare size={20} color="#00FF41" />
-              <Text style={styles.secondaryCTAText}>Chat Interface</Text>
+            <TouchableOpacity style={[styles.secondaryCTA, isMobile && styles.secondaryCTAMobile]} onPress={() => router.push('/')}>
+              <MessageSquare size={isMobile ? 18 : 20} color="#00FF41" />
+              <Text style={[styles.secondaryCTAText, isMobile && { fontSize: 14 }]}>Chat Interface</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1098,19 +1119,22 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         {/* ============================================================
             WHAT IS ZEROPROMPT API
         ============================================================ */}
-        <View style={styles.section}>
+        <View style={[styles.section, isMobile && styles.sectionMobile]}>
           <Text style={styles.sectionLabel}>WHAT IS IT</Text>
-          <Text style={styles.sectionTitle}>AI Infrastructure for Autonomous Agents</Text>
-          <Text style={styles.sectionSubtitle}>
-            ZeroPrompt API is a decentralized gateway that allows AI agents to consume any AI model
-            without the friction of API keys, rate limits, or account management. Perfect for autonomous systems.
+          <Text style={[styles.sectionTitle, isMobile && styles.sectionTitleMobile]}>
+            {isMobile ? 'AI Infrastructure' : 'AI Infrastructure for Autonomous Agents'}
+          </Text>
+          <Text style={[styles.sectionSubtitle, isMobile && styles.sectionSubtitleMobile]}>
+            {isMobile
+              ? 'Decentralized gateway for AI agents to access any model without API keys or rate limits.'
+              : 'ZeroPrompt API is a decentralized gateway that allows AI agents to consume any AI model without the friction of API keys, rate limits, or account management. Perfect for autonomous systems.'}
           </Text>
 
-          <View style={styles.featuresGrid}>
+          <View style={[styles.featuresGrid, isMobile && styles.featuresGridMobile]}>
             <FeatureCard
               icon={Bot}
-              title="Agent-First Design"
-              description="Built specifically for AI agents that need autonomous access to AI models without human intervention."
+              title="Agent-First"
+              description={isMobile ? "AI agents access models without human intervention." : "Built specifically for AI agents that need autonomous access to AI models without human intervention."}
               color="#00FF41"
             />
             <FeatureCard
@@ -1249,10 +1273,10 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             </View>
           </View>
 
-          <View style={[styles.consoleContainer, { flexDirection: isDesktop ? 'row' : 'column' }]}>
+          <View style={[styles.consoleContainer, !isDesktop && styles.consoleContainerMobile]}>
 
             {/* LEFT PANEL - Input */}
-            <View style={[styles.consolePanel, { flex: 1 }]}>
+            <View style={[styles.consolePanel, isDesktop && { flex: 1 }, isMobile && styles.consolePanelMobile]}>
               <View style={styles.consolePanelHeader}>
                 <Terminal size={18} color="#00FF41" />
                 <Text style={styles.consolePanelTitle}>1. Configure Request</Text>
@@ -1446,7 +1470,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             </View>
 
             {/* RIGHT PANEL - Execution */}
-            <View style={[styles.consolePanel, styles.consolePanelDark, { flex: 1.2 }]}>
+            <View style={[styles.consolePanel, styles.consolePanelDark, isDesktop && { flex: 1.2 }, isMobile && styles.consolePanelMobile]}>
               <View style={styles.consolePanelHeader}>
                 <Layers size={18} color="#8B5CF6" />
                 <Text style={styles.consolePanelTitle}>2. Watch the x402 Flow</Text>
@@ -2050,18 +2074,26 @@ const styles = StyleSheet.create({
 
   // Console
   consoleContainer: {
+    flexDirection: 'row',
     gap: 20,
     marginTop: 20
+  },
+  consoleContainerMobile: {
+    flexDirection: 'column',
+    gap: 16,
   },
   consolePanel: {
     backgroundColor: '#0d0d0d',
     borderRadius: 20,
     padding: 24,
     borderWidth: 1,
-    borderColor: '#1a1a1a'
+    borderColor: '#1a1a1a',
+    position: 'relative',
+    zIndex: 1,
   },
   consolePanelDark: {
-    backgroundColor: '#080808'
+    backgroundColor: '#080808',
+    zIndex: 0,
   },
   consolePanelHeader: {
     flexDirection: 'row',
@@ -2688,5 +2720,81 @@ const styles = StyleSheet.create({
     color: '#555',
     fontSize: 11,
     marginTop: 2
-  }
+  },
+
+  // ========================================
+  // MOBILE STYLES
+  // ========================================
+  navbarMobile: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  navLinksMobile: {
+    gap: 2,
+  },
+  navLinkMobile: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  walletConnectedMobile: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  connectBtnMobile: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  contentMobile: {
+    padding: 12,
+  },
+  heroSectionMobile: {
+    paddingVertical: 30,
+  },
+  heroTitleMobile: {
+    fontSize: 32,
+    lineHeight: 40,
+  },
+  heroSubtitleMobile: {
+    fontSize: 14,
+    lineHeight: 22,
+    paddingHorizontal: 8,
+  },
+  heroStatsMobile: {
+    padding: 16,
+    borderRadius: 12,
+  },
+  heroCTAsMobile: {
+    flexDirection: 'column',
+    width: '100%',
+    gap: 10,
+  },
+  primaryCTAMobile: {
+    width: '100%',
+    paddingVertical: 16,
+    justifyContent: 'center',
+  },
+  secondaryCTAMobile: {
+    width: '100%',
+    paddingVertical: 16,
+    justifyContent: 'center',
+  },
+  sectionMobile: {
+    paddingVertical: 32,
+  },
+  sectionTitleMobile: {
+    fontSize: 24,
+    lineHeight: 32,
+  },
+  sectionSubtitleMobile: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  featuresGridMobile: {
+    flexDirection: 'column',
+    gap: 12,
+  },
+  consolePanelMobile: {
+    padding: 16,
+    borderRadius: 16,
+  },
 });

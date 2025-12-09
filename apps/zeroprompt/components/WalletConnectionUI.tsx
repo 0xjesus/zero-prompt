@@ -9,7 +9,8 @@ import {
   Platform,
   Animated,
   Easing,
-  Image
+  Image,
+  useWindowDimensions
 } from "react-native";
 import {
   Wallet,
@@ -383,6 +384,8 @@ export const WalletSidebarSection = ({
   currentBalance,
   onAddCredits
 }: WalletSidebarSectionProps) => {
+  const { width } = useWindowDimensions();
+  const isMobile = width < 600;
   const [expanded, setExpanded] = useState(false);
   const expandAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -410,9 +413,9 @@ export const WalletSidebarSection = ({
   const isLoading = isConnecting || isAuthenticating;
 
   if (!user?.walletAddress) {
-    // Not connected state - Premium CTA
+    // Not connected state - Premium CTA (compact on mobile)
     return (
-      <View style={[styles.sidebarCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
+      <View style={[styles.sidebarCard, { backgroundColor: theme.background, borderColor: theme.border, padding: isMobile ? 10 : 16, marginTop: 0 }]}>
         {/* Animated glow background for CTA */}
         <Animated.View
           style={[
@@ -425,20 +428,20 @@ export const WalletSidebarSection = ({
           ]}
         />
 
-        <View style={styles.guestHeader}>
-          <View style={[styles.guestAvatar, { backgroundColor: theme.surface }]}>
-            <User size={20} color={theme.textSecondary} />
+        <View style={[styles.guestHeader, { gap: isMobile ? 10 : 12 }]}>
+          <View style={[styles.guestAvatar, { backgroundColor: theme.surface, width: isMobile ? 32 : 40, height: isMobile ? 32 : 40, borderRadius: isMobile ? 16 : 20 }]}>
+            <User size={isMobile ? 16 : 20} color={theme.textSecondary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.guestTitle, { color: theme.textSecondary }]}>GUEST_MODE</Text>
-            <Text style={[styles.guestSub, { color: theme.textMuted }]}>Anonymous Session</Text>
+            <Text style={[styles.guestTitle, { color: theme.textSecondary, fontSize: isMobile ? 10 : 12 }]}>GUEST_MODE</Text>
+            {!isMobile && <Text style={[styles.guestSub, { color: theme.textMuted }]}>Anonymous Session</Text>}
           </View>
         </View>
 
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <View style={[styles.divider, { backgroundColor: theme.border, marginVertical: isMobile ? 10 : 16 }]} />
 
         <TouchableOpacity
-          style={[styles.connectBtn, { backgroundColor: '#8B5CF6' }]}
+          style={[styles.connectBtn, { backgroundColor: '#8B5CF6', paddingVertical: isMobile ? 10 : 14 }]}
           onPress={onConnectWallet}
           disabled={isLoading}
         >
@@ -446,41 +449,44 @@ export const WalletSidebarSection = ({
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <>
-              <Wallet size={18} color="#fff" />
-              <Text style={styles.connectBtnText}>Connect Wallet</Text>
+              <Wallet size={isMobile ? 16 : 18} color="#fff" />
+              <Text style={[styles.connectBtnText, { fontSize: isMobile ? 12 : 14 }]}>Connect Wallet</Text>
             </>
           )}
         </TouchableOpacity>
 
-        <View style={styles.benefitsList}>
-          <View style={styles.benefitItem}>
-            <CheckCircle size={12} color={theme.success} />
-            <Text style={[styles.benefitText, { color: theme.textSecondary }]}>Sync chats across devices</Text>
+        {/* Hide benefits on mobile to save space */}
+        {!isMobile && (
+          <View style={styles.benefitsList}>
+            <View style={styles.benefitItem}>
+              <CheckCircle size={12} color={theme.success} />
+              <Text style={[styles.benefitText, { color: theme.textSecondary }]}>Sync chats across devices</Text>
+            </View>
+            <View style={styles.benefitItem}>
+              <CheckCircle size={12} color={theme.success} />
+              <Text style={[styles.benefitText, { color: theme.textSecondary }]}>Add credits for premium AI</Text>
+            </View>
+            <View style={styles.benefitItem}>
+              <CheckCircle size={12} color={theme.success} />
+              <Text style={[styles.benefitText, { color: theme.textSecondary }]}>Keep your history forever</Text>
+            </View>
           </View>
-          <View style={styles.benefitItem}>
-            <CheckCircle size={12} color={theme.success} />
-            <Text style={[styles.benefitText, { color: theme.textSecondary }]}>Add credits for premium AI</Text>
-          </View>
-          <View style={styles.benefitItem}>
-            <CheckCircle size={12} color={theme.success} />
-            <Text style={[styles.benefitText, { color: theme.textSecondary }]}>Keep your history forever</Text>
-          </View>
-        </View>
+        )}
       </View>
     );
   }
 
-  // Connected state
+  // Connected state (compact on mobile)
   return (
-    <View style={[styles.sidebarCard, { backgroundColor: theme.background, borderColor: theme.border }]}>
-      <TouchableOpacity style={styles.walletHeader} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
-        <View style={[styles.walletAvatar, { backgroundColor: theme.primary + '20' }]}>
-          <Wallet size={18} color={theme.primary} />
-          <View style={[styles.onlineDot, { backgroundColor: theme.success }]} />
+    <View style={[styles.sidebarCard, { backgroundColor: theme.background, borderColor: theme.border, padding: isMobile ? 10 : 16, marginTop: 0 }]}>
+      <TouchableOpacity style={[styles.walletHeader, { gap: isMobile ? 10 : 12 }]} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+        <View style={[styles.walletAvatar, { backgroundColor: theme.primary + '20', width: isMobile ? 32 : 40, height: isMobile ? 32 : 40, borderRadius: isMobile ? 16 : 20 }]}>
+          <Wallet size={isMobile ? 14 : 18} color={theme.primary} />
+          <View style={[styles.onlineDot, { backgroundColor: theme.success, width: isMobile ? 8 : 10, height: isMobile ? 8 : 10, borderRadius: isMobile ? 4 : 5 }]} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.walletLabel, { color: theme.text }]}>OPERATOR</Text>
-          <Text style={[styles.walletAddress, { color: theme.textSecondary }]}>
+          <Text style={[styles.walletLabel, { color: theme.text, fontSize: isMobile ? 10 : 12 }]}>OPERATOR</Text>
+          <Text style={[styles.walletAddress, { color: theme.textSecondary, fontSize: isMobile ? 9 : 10 }]}>
             {user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}
           </Text>
         </View>
@@ -491,25 +497,25 @@ export const WalletSidebarSection = ({
             }]
           }}
         >
-          <ArrowRight size={16} color={theme.textSecondary} style={{ transform: [{ rotate: '90deg' }] }} />
+          <ArrowRight size={isMobile ? 14 : 16} color={theme.textSecondary} style={{ transform: [{ rotate: '90deg' }] }} />
         </Animated.View>
       </TouchableOpacity>
 
       {/* Balance Section */}
-      <View style={[styles.balanceSection, { backgroundColor: theme.surface }]}>
+      <View style={[styles.balanceSection, { backgroundColor: theme.surface, padding: isMobile ? 10 : 12, marginTop: isMobile ? 10 : 12 }]}>
         <View style={styles.balanceRow}>
-          <Text style={[styles.balanceLabel, { color: theme.textMuted }]}>CREDITS</Text>
+          <Text style={[styles.balanceLabel, { color: theme.textMuted, fontSize: isMobile ? 9 : 10 }]}>CREDITS</Text>
           <View style={styles.balanceValue}>
-            <Image source={ZEROPROMPT_LOGO} style={{width: 16, height: 16}} resizeMode="contain" />
-            <Text style={[styles.balanceAmount, { color: currentBalance > 0 ? theme.success : theme.warning }]}>
+            <Image source={ZEROPROMPT_LOGO} style={{width: isMobile ? 14 : 16, height: isMobile ? 14 : 16}} resizeMode="contain" />
+            <Text style={[styles.balanceAmount, { color: currentBalance > 0 ? theme.success : theme.warning, fontSize: isMobile ? 14 : 16 }]}>
               ${currentBalance?.toFixed(4) || '0.0000'}
             </Text>
           </View>
         </View>
-        <View style={styles.creditButtonsRow}>
-          <TouchableOpacity style={[styles.addCreditsBtn, { backgroundColor: theme.primary + '15', flex: 1 }]} onPress={onAddCredits}>
-            <Wallet size={12} color={theme.primary} />
-            <Text style={[styles.addCreditsText, { color: theme.primary }]}>ADD CREDITS</Text>
+        <View style={[styles.creditButtonsRow, { marginTop: isMobile ? 8 : 10 }]}>
+          <TouchableOpacity style={[styles.addCreditsBtn, { backgroundColor: theme.primary + '15', flex: 1, paddingVertical: isMobile ? 6 : 8 }]} onPress={onAddCredits}>
+            <Wallet size={isMobile ? 10 : 12} color={theme.primary} />
+            <Text style={[styles.addCreditsText, { color: theme.primary, fontSize: isMobile ? 9 : 10 }]}>ADD CREDITS</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -517,37 +523,37 @@ export const WalletSidebarSection = ({
       {/* Expandable Section with collapse animation */}
       <Animated.View
         style={{
-          height: expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 120] }),
+          maxHeight: expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 150] }),
           overflow: 'hidden',
           opacity: expandAnim
         }}
       >
-        <View style={[styles.expandedContent, { borderTopColor: theme.border }]}>
+        <View style={[styles.expandedContent, { borderTopColor: theme.border, paddingTop: isMobile ? 8 : 12, marginTop: isMobile ? 8 : 12 }]}>
           <TouchableOpacity
-            style={styles.menuItem}
+            style={[styles.menuItem, { paddingVertical: isMobile ? 10 : 10 }]}
             onPress={() => {
               if (Platform.OS === 'web' && user?.walletAddress) {
                 navigator.clipboard.writeText(user.walletAddress);
               }
             }}
           >
-            <Copy size={14} color={theme.textSecondary} />
-            <Text style={[styles.menuItemText, { color: theme.text }]}>Copy Address</Text>
+            <Copy size={isMobile ? 14 : 14} color={theme.textSecondary} />
+            <Text style={[styles.menuItemText, { color: theme.text, fontSize: isMobile ? 12 : 12 }]}>Copy Address</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.menuItem}
+            style={[styles.menuItem, { paddingVertical: isMobile ? 10 : 10 }]}
             onPress={() => {
               if (Platform.OS === 'web' && user?.walletAddress) {
                 window.open(`https://snowtrace.io/address/${user.walletAddress}`, '_blank');
               }
             }}
           >
-            <ExternalLink size={14} color={theme.textSecondary} />
-            <Text style={[styles.menuItemText, { color: theme.text }]}>View on Explorer</Text>
+            <ExternalLink size={isMobile ? 14 : 14} color={theme.textSecondary} />
+            <Text style={[styles.menuItemText, { color: theme.text, fontSize: isMobile ? 12 : 12 }]}>View on Explorer</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuItem} onPress={onLogout}>
-            <LogOut size={14} color="#ff4444" />
-            <Text style={[styles.menuItemText, { color: '#ff4444' }]}>Disconnect</Text>
+          <TouchableOpacity style={[styles.menuItem, { paddingVertical: isMobile ? 10 : 10 }]} onPress={onLogout}>
+            <LogOut size={isMobile ? 14 : 14} color="#ff4444" />
+            <Text style={[styles.menuItemText, { color: '#ff4444', fontSize: isMobile ? 12 : 12 }]}>Disconnect</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>

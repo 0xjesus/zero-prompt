@@ -13,8 +13,24 @@ import {
 } from 'react-native';
 import {
     X, Search, Brain, PenTool, Globe, Eye, Mic, Sparkles, Check,
-    ChevronDown, ChevronRight, Star, Clock, Layers, Gift
+    ChevronDown, ChevronRight, Star, Clock, Layers, Tag, Award, ExternalLink
 } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { API_URL } from '../config/api';
+
+// Reputation Tags - LLM Capability Categories (community-driven)
+const REPUTATION_TAGS = [
+    { id: 'math', label: 'Math', emoji: '🧮', color: '#3B82F6' },
+    { id: 'coding', label: 'Coding', emoji: '💻', color: '#10B981' },
+    { id: 'reasoning', label: 'Reasoning', emoji: '🧠', color: '#8B5CF6' },
+    { id: 'creative', label: 'Creative', emoji: '🎨', color: '#EC4899' },
+    { id: 'research', label: 'Research', emoji: '🔬', color: '#06B6D4' },
+    { id: 'uncensored', label: 'Uncensored', emoji: '🔓', color: '#EF4444' },
+    { id: 'roleplay', label: 'Roleplay', emoji: '🎭', color: '#F97316' },
+    { id: 'multilingual', label: 'Multilingual', emoji: '🌍', color: '#14B8A6' },
+    { id: 'fast', label: 'Fast', emoji: '⚡', color: '#EAB308' },
+    { id: 'accurate', label: 'Accurate', emoji: '🎯', color: '#22C55E' },
+];
 
 type Model = {
     id: number;
@@ -39,7 +55,7 @@ type Model = {
     } | null;
 };
 
-type Category = 'all' | 'chat' | 'image' | 'reasoning' | 'vision' | 'free' | 'top-rated';
+type Category = 'all' | 'chat' | 'image' | 'reasoning' | 'vision' | 'top-rated';
 
 interface ModelSelectorModalProps {
     visible: boolean;
@@ -356,12 +372,19 @@ export default function ModelSelectorModal({
     onToggleModel,
     theme
 }: ModelSelectorModalProps) {
+    const router = useRouter();
     const { width, height } = useWindowDimensions();
     const isDesktop = width > 768;
+    const isMobile = width < 480;
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState<Category>('all');
     const [favorites, setFavorites] = useState<string[]>([]);
     const [recentModels, setRecentModels] = useState<string[]>([]);
+
+    // Reputation tag filtering
+    const [selectedTag, setSelectedTag] = useState<string | null>(null);
+    const [tagModelIds, setTagModelIds] = useState<number[]>([]);
+    const [isLoadingTagModels, setIsLoadingTagModels] = useState(false);
 
     useEffect(() => {
         if (Platform.OS === 'web') {
@@ -375,6 +398,32 @@ export default function ModelSelectorModal({
             }
         }
     }, []);
+
+    // Fetch models by reputation tag
+    useEffect(() => {
+        if (!selectedTag) {
+            setTagModelIds([]);
+            return;
+        }
+
+        const fetchTagModels = async () => {
+            setIsLoadingTagModels(true);
+            try {
+                const res = await fetch(`${API_URL}/reputation/models-by-tag/${encodeURIComponent(selectedTag)}`);
+                const data = await res.json();
+                if (data.models) {
+                    setTagModelIds(data.models.map((m: any) => m.id));
+                }
+            } catch (err) {
+                console.warn('Failed to fetch models by tag:', err);
+                setTagModelIds([]);
+            } finally {
+                setIsLoadingTagModels(false);
+            }
+        };
+
+        fetchTagModels();
+    }, [selectedTag]);
 
     const toggleFavorite = useCallback((modelId: string) => {
         if (!modelId) return;
@@ -404,12 +453,18 @@ export default function ModelSelectorModal({
     const { filteredModels, categories } = useMemo(() => {
         let filtered = models || [];
 
+        // Filter by search query
         if (searchQuery) {
             const query = searchQuery.toLowerCase();
             filtered = filtered.filter(m =>
                 (m.name || '').toLowerCase().includes(query) ||
                 (m.openrouterId || '').toLowerCase().includes(query)
             );
+        }
+
+        // Filter by reputation tag (community-driven categories)
+        if (selectedTag && tagModelIds.length > 0) {
+            filtered = filtered.filter(m => tagModelIds.includes(m.id));
         }
 
         // Helper functions for categorization
@@ -443,8 +498,6 @@ export default function ModelSelectorModal({
                         return isThinkingModel(m);
                     case 'vision':
                         return isVisionModel(m);
-                    case 'free':
-                        return (m.publicPricingPrompt || 0) === 0;
                     case 'top-rated':
                         // Only models with ratings >= 3.5 and at least 2 ratings
                         return m.reputation && m.reputation.totalRatings >= 2 && m.reputation.averageScore >= 3.5;
@@ -482,7 +535,7 @@ export default function ModelSelectorModal({
             filteredModels: filtered,
             categories: { favModels, recentModelsList, imageModels, reasoningModels, visionModels, chatModels }
         };
-    }, [models, searchQuery, activeCategory, favorites, recentModels]);
+    }, [models, searchQuery, activeCategory, favorites, recentModels, selectedTag, tagModelIds]);
 
     const categoryFilters: { id: Category; label: string; icon: any; color: string }[] = [
         { id: 'all', label: 'All', icon: Layers, color: theme.primary },
@@ -491,11 +544,10 @@ export default function ModelSelectorModal({
         { id: 'image', label: 'Image', icon: PenTool, color: '#E91E63' },
         { id: 'reasoning', label: 'Thinking', icon: Brain, color: '#9C27B0' },
         { id: 'vision', label: 'Vision', icon: Eye, color: '#FF9800' },
-        { id: 'free', label: 'Free', icon: Gift, color: '#4CAF50' },
     ];
 
     const modalWidth = isDesktop ? Math.min(600, width * 0.8) : width;
-    const modalHeight = height * 0.85;
+    const modalHeight = isMobile ? height * 0.95 : height * 0.85;
 
     const getButtonText = () => {
         if (selectedModels.length === 0) return 'Select a Model';
@@ -508,39 +560,52 @@ export default function ModelSelectorModal({
     };
 
     return (
-        <Modal visible={visible} animationType="fade" transparent>
-            <View style={styles.overlay}>
+        <Modal visible={visible} animationType={isMobile ? "slide" : "fade"} transparent>
+            <View style={[styles.overlay, isMobile && { justifyContent: 'flex-end' }]}>
                 <View style={[
                     styles.modalContainer,
                     {
                         width: modalWidth,
                         maxHeight: modalHeight,
+                    },
+                    isMobile && {
+                        borderRadius: 0,
+                        borderTopLeftRadius: 24,
+                        borderTopRightRadius: 24,
+                        paddingBottom: Platform.OS === 'ios' ? 34 : 0
                     }
                 ]}>
+                    {/* Mobile Drag Handle */}
+                    {isMobile && (
+                        <View style={{ alignItems: 'center', paddingTop: 10, paddingBottom: 4 }}>
+                            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+                        </View>
+                    )}
+
                     {/* Header */}
-                    <View style={styles.header}>
+                    <View style={[styles.header, isMobile && { paddingTop: 8, paddingHorizontal: 16, paddingVertical: 12 }]}>
                         <View style={styles.headerLeft}>
-                            <Sparkles size={20} color={theme.primary} />
-                            <Text style={styles.headerTitle}>Select Models</Text>
+                            <Sparkles size={isMobile ? 18 : 20} color={theme.primary} />
+                            <Text style={[styles.headerTitle, isMobile && { fontSize: 16 }]}>Select Models</Text>
                             <View style={[styles.countBadge, { backgroundColor: 'rgba(0, 255, 65, 0.15)' }]}>
                                 <Text style={[styles.countText, { color: theme.primary }]}>
                                     {String(models.length)}
                                 </Text>
                             </View>
                         </View>
-                        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                            <X color="#fff" size={18} />
+                        <TouchableOpacity onPress={onClose} style={[styles.closeButton, isMobile && { width: 32, height: 32 }]}>
+                            <X color="#fff" size={isMobile ? 16 : 18} />
                         </TouchableOpacity>
                     </View>
 
                     {/* Search */}
-                    <View style={styles.searchContainer}>
-                        <View style={styles.searchInputWrapper}>
-                            <Search size={18} color="rgba(255,255,255,0.4)" />
+                    <View style={[styles.searchContainer, isMobile && { paddingHorizontal: 12, paddingVertical: 8 }]}>
+                        <View style={[styles.searchInputWrapper, isMobile && { paddingHorizontal: 10, paddingVertical: 8 }]}>
+                            <Search size={isMobile ? 16 : 18} color="rgba(255,255,255,0.4)" />
                             <TextInput
                                 placeholder="Search models..."
                                 placeholderTextColor="rgba(255,255,255,0.3)"
-                                style={styles.searchInput}
+                                style={[styles.searchInput, isMobile && { fontSize: 14 }]}
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
                             />
@@ -556,8 +621,8 @@ export default function ModelSelectorModal({
                     <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        style={styles.filtersScroll}
-                        contentContainerStyle={styles.filtersContent}
+                        style={[styles.filtersScroll, isMobile && { maxHeight: 44 }]}
+                        contentContainerStyle={[styles.filtersContent, isMobile && { paddingHorizontal: 12, paddingVertical: 8 }]}
                     >
                         {categoryFilters.map(cat => {
                             const IconComponent = cat.icon;
@@ -571,13 +636,15 @@ export default function ModelSelectorModal({
                                         {
                                             backgroundColor: isActive ? `${cat.color}20` : 'rgba(255,255,255,0.03)',
                                             borderColor: isActive ? `${cat.color}40` : 'rgba(255,255,255,0.06)'
-                                        }
+                                        },
+                                        isMobile && { paddingHorizontal: 10, paddingVertical: 6, marginRight: 6 }
                                     ]}
                                 >
-                                    <IconComponent size={14} color={isActive ? cat.color : 'rgba(255,255,255,0.5)'} />
+                                    <IconComponent size={isMobile ? 12 : 14} color={isActive ? cat.color : 'rgba(255,255,255,0.5)'} />
                                     <Text style={[
                                         styles.filterText,
-                                        { color: isActive ? cat.color : 'rgba(255,255,255,0.6)', fontWeight: isActive ? '600' : '400' }
+                                        { color: isActive ? cat.color : 'rgba(255,255,255,0.6)', fontWeight: isActive ? '600' : '400' },
+                                        isMobile && { fontSize: 11 }
                                     ]}>
                                         {cat.label}
                                     </Text>
@@ -585,6 +652,93 @@ export default function ModelSelectorModal({
                             );
                         })}
                     </ScrollView>
+
+                    {/* Reputation Tags - Community-driven categories */}
+                    <View style={[styles.tagFiltersContainer, isMobile && { paddingHorizontal: 12, paddingVertical: 8 }]}>
+                        <View style={styles.tagFiltersHeader}>
+                            <Award size={isMobile ? 12 : 14} color={theme.primary} />
+                            <Text style={[styles.tagFiltersLabel, isMobile && { fontSize: 10 }]}>Community Ratings</Text>
+                            {!isMobile && (
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        onClose();
+                                        router.push('/reputation');
+                                    }}
+                                    style={styles.reputationLink}
+                                >
+                                    <Text style={[styles.reputationLinkText, { color: theme.primary }]}>Rate Models</Text>
+                                    <ExternalLink size={12} color={theme.primary} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={[styles.tagFiltersContent, isMobile && { gap: 4 }]}
+                        >
+                            {REPUTATION_TAGS.map(tag => {
+                                const isActive = selectedTag === tag.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={tag.id}
+                                        onPress={() => setSelectedTag(isActive ? null : tag.id)}
+                                        style={[
+                                            styles.tagFilterButton,
+                                            {
+                                                backgroundColor: isActive ? `${tag.color}20` : 'rgba(255,255,255,0.03)',
+                                                borderColor: isActive ? `${tag.color}60` : 'rgba(255,255,255,0.08)'
+                                            },
+                                            isMobile && { paddingHorizontal: 8, paddingVertical: 4 }
+                                        ]}
+                                    >
+                                        <Text style={[styles.tagFilterEmoji, isMobile && { fontSize: 10 }]}>{tag.emoji}</Text>
+                                        <Text style={[
+                                            styles.tagFilterText,
+                                            { color: isActive ? tag.color : 'rgba(255,255,255,0.6)' },
+                                            isMobile && { fontSize: 10 }
+                                        ]}>
+                                            {tag.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+                    </View>
+
+                    {/* Active Tag Filter Banner */}
+                    {selectedTag && (
+                        <View style={[
+                            styles.activeTagBanner,
+                            { backgroundColor: `${REPUTATION_TAGS.find(t => t.id === selectedTag)?.color}15` }
+                        ]}>
+                            <View style={styles.activeTagBannerContent}>
+                                <Text style={styles.activeTagBannerEmoji}>
+                                    {REPUTATION_TAGS.find(t => t.id === selectedTag)?.emoji}
+                                </Text>
+                                <View>
+                                    <Text style={[
+                                        styles.activeTagBannerTitle,
+                                        { color: REPUTATION_TAGS.find(t => t.id === selectedTag)?.color }
+                                    ]}>
+                                        Best for {REPUTATION_TAGS.find(t => t.id === selectedTag)?.label}
+                                    </Text>
+                                    <Text style={styles.activeTagBannerSubtitle}>
+                                        {isLoadingTagModels
+                                            ? 'Loading...'
+                                            : tagModelIds.length > 0
+                                                ? `${tagModelIds.length} model${tagModelIds.length !== 1 ? 's' : ''} recommended by the community`
+                                                : 'No models rated yet - be the first!'}
+                                    </Text>
+                                </View>
+                            </View>
+                            <TouchableOpacity
+                                onPress={() => setSelectedTag(null)}
+                                style={styles.activeTagBannerClose}
+                            >
+                                <X size={16} color="rgba(255,255,255,0.6)" />
+                            </TouchableOpacity>
+                        </View>
+                    )}
 
                     {/* Selected Models Strip */}
                     {selectedModels.length > 0 && (
@@ -687,15 +841,12 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {(activeCategory === 'all' || activeCategory === 'chat' || activeCategory === 'free') && (
+                        {(activeCategory === 'all' || activeCategory === 'chat') && (
                             <CategorySection
                                 title="Chat Models"
                                 icon={Sparkles}
                                 color="#00BCD4"
-                                models={activeCategory === 'free'
-                                    ? categories.chatModels.filter(m => (m.publicPricingPrompt || 0) === 0)
-                                    : categories.chatModels
-                                }
+                                models={categories.chatModels}
                                 selectedModels={selectedModels}
                                 onToggleModel={handleToggleModel}
                                 theme={theme}
@@ -825,6 +976,94 @@ const styles = StyleSheet.create({
     filterText: {
         fontSize: 13,
         marginLeft: 6
+    },
+    // Reputation Tag Filters
+    tagFiltersContainer: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.04)',
+        backgroundColor: 'rgba(255,255,255,0.02)'
+    },
+    tagFiltersHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+        gap: 6
+    },
+    tagFiltersLabel: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.7)',
+        fontWeight: '600',
+        flex: 1
+    },
+    reputationLink: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0, 255, 65, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(0, 255, 65, 0.2)'
+    },
+    reputationLinkText: {
+        fontSize: 11,
+        fontWeight: '600'
+    },
+    tagFiltersContent: {
+        flexDirection: 'row',
+        gap: 6
+    },
+    tagFilterButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 16,
+        borderWidth: 1,
+        gap: 4
+    },
+    tagFilterEmoji: {
+        fontSize: 12
+    },
+    tagFilterText: {
+        fontSize: 11,
+        fontWeight: '500'
+    },
+    // Active Tag Banner
+    activeTagBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.06)'
+    },
+    activeTagBannerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        flex: 1
+    },
+    activeTagBannerEmoji: {
+        fontSize: 24
+    },
+    activeTagBannerTitle: {
+        fontSize: 14,
+        fontWeight: '700'
+    },
+    activeTagBannerSubtitle: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.5)',
+        marginTop: 2
+    },
+    activeTagBannerClose: {
+        padding: 8,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.05)'
     },
     selectedStrip: {
         padding: 12,

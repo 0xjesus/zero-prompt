@@ -53,6 +53,7 @@ interface Review {
   tag1?: string;
   createdAt: string;
   reviewer: string;
+  txHash?: string;
 }
 
 interface ModelWithReputation extends Model {
@@ -71,8 +72,23 @@ const RATING_LABELS: Record<number, { label: string; emoji: string; color: strin
   5: { label: 'Excellent', emoji: '🤩', color: '#00FF41', description: 'Highly recommended' },
 };
 
-// Tag Options
-const TAG_OPTIONS = ['Quality', 'Speed', 'Accuracy', 'Value', 'Creativity', 'Reasoning'];
+// Tag Options - LLM Capability Categories
+// These tags help users categorize models by their strengths
+const TAG_OPTIONS: { id: string; label: string; emoji: string; color: string }[] = [
+  // Task Capabilities
+  { id: 'math', label: 'Math', emoji: '🧮', color: '#3B82F6' },
+  { id: 'coding', label: 'Coding', emoji: '💻', color: '#10B981' },
+  { id: 'reasoning', label: 'Reasoning', emoji: '🧠', color: '#8B5CF6' },
+  { id: 'creative', label: 'Creative', emoji: '🎨', color: '#EC4899' },
+  { id: 'research', label: 'Research', emoji: '🔬', color: '#06B6D4' },
+  // Behavior
+  { id: 'uncensored', label: 'Uncensored', emoji: '🔓', color: '#EF4444' },
+  { id: 'roleplay', label: 'Roleplay', emoji: '🎭', color: '#F97316' },
+  { id: 'multilingual', label: 'Multilingual', emoji: '🌍', color: '#14B8A6' },
+  // Technical
+  { id: 'fast', label: 'Fast', emoji: '⚡', color: '#EAB308' },
+  { id: 'accurate', label: 'Accurate', emoji: '🎯', color: '#22C55E' },
+];
 
 // Stepper Rating Component
 const StepperRating = ({
@@ -316,14 +332,22 @@ const HowItWorks = ({ onClose }: { onClose: () => void }) => (
   </Modal>
 );
 
-// Review Card Component
+// Review Card Component - Shows all rating metadata
 const ReviewCard = ({ review }: { review: Review }) => {
   const truncatedReviewer = review.reviewer.length > 12
     ? review.reviewer.slice(0, 6) + '...' + review.reviewer.slice(-4)
     : review.reviewer;
 
+  const truncatedTxHash = review.txHash
+    ? review.txHash.slice(0, 10) + '...' + review.txHash.slice(-6)
+    : null;
+
+  const tagConfig = review.tag1 ? TAG_OPTIONS.find(t => t.id === review.tag1?.toLowerCase()) : null;
+  const ratingLabel = RATING_LABELS[review.score];
+
   return (
     <View style={styles.reviewCard}>
+      {/* Header: Reviewer + Date */}
       <View style={styles.reviewHeader}>
         <View style={styles.reviewerInfo}>
           <View style={styles.reviewerAvatar}>
@@ -331,22 +355,72 @@ const ReviewCard = ({ review }: { review: Review }) => {
               {review.reviewer.slice(0, 2).toUpperCase()}
             </Text>
           </View>
-          <Text style={styles.reviewerName}>{truncatedReviewer}</Text>
-        </View>
-        <View style={styles.reviewScore}>
-          <StarDisplay rating={review.score} size={10} />
-          <Text style={styles.reviewScoreText}>{review.score}</Text>
-        </View>
-      </View>
-      {review.comment && (
-        <Text style={styles.reviewComment}>{review.comment}</Text>
-      )}
-      {review.tag1 && (
-        <View style={styles.reviewTags}>
-          <View style={styles.reviewTag}>
-            <Text style={styles.reviewTagText}>{review.tag1}</Text>
+          <View>
+            <Text style={styles.reviewerName}>{truncatedReviewer}</Text>
+            <Text style={styles.reviewDate}>
+              {new Date(review.createdAt).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+              })}
+            </Text>
           </View>
         </View>
+        {/* Rating Score with Label */}
+        <View style={styles.reviewScoreContainer}>
+          <View style={[styles.reviewScoreBadge, { backgroundColor: `${ratingLabel?.color}20` }]}>
+            <Text style={styles.reviewScoreEmoji}>{ratingLabel?.emoji}</Text>
+            <StarDisplay rating={review.score} size={12} />
+            <Text style={[styles.reviewScoreNum, { color: ratingLabel?.color }]}>{review.score}/5</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Tag: "Best For" category */}
+      {review.tag1 && (
+        <View style={styles.reviewTagRow}>
+          <Text style={styles.reviewTagLabel}>Best for:</Text>
+          <View style={[
+            styles.reviewTagBadge,
+            tagConfig && { backgroundColor: `${tagConfig.color}15`, borderColor: `${tagConfig.color}30` }
+          ]}>
+            {tagConfig && <Text style={styles.reviewTagEmoji}>{tagConfig.emoji}</Text>}
+            <Text style={[styles.reviewTagText, tagConfig && { color: tagConfig.color }]}>
+              {tagConfig ? tagConfig.label : review.tag1}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Comment */}
+      {review.comment ? (
+        <View style={styles.reviewCommentBox}>
+          <MessageSquare size={12} color="rgba(255,255,255,0.4)" />
+          <Text style={styles.reviewComment}>{review.comment}</Text>
+        </View>
+      ) : (
+        <View style={styles.reviewNoComment}>
+          <Text style={styles.reviewNoCommentText}>No comment provided</Text>
+        </View>
+      )}
+
+      {/* TX Link - On-chain verification */}
+      {review.txHash && (
+        <TouchableOpacity
+          style={styles.reviewTxLink}
+          onPress={() => {
+            if (Platform.OS === 'web') {
+              window.open(`https://snowtrace.io/tx/${review.txHash}`, '_blank');
+            }
+          }}
+        >
+          <View style={styles.reviewTxBadge}>
+            <Link2 size={12} color="#00FF41" />
+            <Text style={styles.reviewTxLabel}>On-Chain TX:</Text>
+          </View>
+          <Text style={styles.reviewTxHash}>{truncatedTxHash}</Text>
+          <ExternalLink size={10} color="#00FF41" />
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -371,17 +445,21 @@ const ModelCard = ({
   const shortName = model.name.split(':').pop()?.trim() || model.name;
   const hasRatings = model.reputation && model.reputation.totalRatings > 0;
   const isTopRated = rank <= 3 && hasRatings;
+  const alreadyRated = !!model.userRating;
+
+  // If already rated, clicking opens reviews. Otherwise opens rate modal.
+  const handlePress = alreadyRated && hasRatings ? onViewReviews : onRate;
 
   return (
     <View style={[
       styles.modelCard,
       isTopRated && styles.modelCardTop,
-      model.userRating && styles.modelCardRated,
+      alreadyRated && styles.modelCardRated,
       isDesktop && styles.modelCardDesktop
     ]}>
       <TouchableOpacity
         style={styles.modelCardMain}
-        onPress={onRate}
+        onPress={alreadyRated ? onViewReviews : onRate}
         activeOpacity={0.7}
       >
         {hasRatings && (
@@ -428,7 +506,7 @@ const ModelCard = ({
         </View>
 
         <View style={styles.cardAction}>
-          {model.userRating ? (
+          {alreadyRated ? (
             <View style={styles.yourRatingBadge}>
               <Check size={12} color="#00FF41" />
               <Text style={styles.yourRatingText}>{model.userRating}★</Text>
@@ -444,12 +522,18 @@ const ModelCard = ({
         </View>
       </TouchableOpacity>
 
-      {hasRatings && (
+      {/* Show View Reviews button OR Rate button depending on state */}
+      {alreadyRated ? (
+        <TouchableOpacity style={styles.viewReviewsBtn} onPress={onViewReviews}>
+          <MessageSquare size={12} color="rgba(255,255,255,0.5)" />
+          <Text style={styles.viewReviewsText}>See Reviews</Text>
+        </TouchableOpacity>
+      ) : hasRatings ? (
         <TouchableOpacity style={styles.viewReviewsBtn} onPress={onViewReviews}>
           <MessageSquare size={12} color="rgba(255,255,255,0.5)" />
           <Text style={styles.viewReviewsText}>View Reviews</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
     </View>
   );
 };
@@ -469,26 +553,38 @@ const ReviewsModal = ({
   if (!model) return null;
 
   const shortName = model.name.split(':').pop()?.trim() || model.name;
+  const onChainReviews = reviews.filter(r => r.txHash);
 
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { maxWidth: 450, maxHeight: '80%' }]}>
+        <View style={[styles.modalContent, { maxWidth: 500, maxHeight: '85%' }]}>
           <TouchableOpacity style={styles.modalClose} onPress={onClose}>
             <X size={20} color="#888" />
           </TouchableOpacity>
 
           <View style={styles.reviewsModalHeader}>
-            <MessageSquare size={24} color="#00FF41" />
-            <Text style={styles.modalTitle}>Reviews</Text>
+            <View style={styles.reviewsModalIcon}>
+              <Link2 size={20} color="#00FF41" />
+            </View>
+            <Text style={styles.modalTitle}>On-Chain Reviews</Text>
           </View>
           <Text style={styles.reviewsModelName}>{shortName}</Text>
+
+          {onChainReviews.length > 0 && (
+            <View style={styles.reviewsCountBadge}>
+              <Text style={styles.reviewsCountText}>
+                {onChainReviews.length} verified on Avalanche
+              </Text>
+            </View>
+          )}
 
           <ScrollView style={styles.reviewsList} showsVerticalScrollIndicator={false}>
             {reviews.length === 0 ? (
               <View style={styles.noReviews}>
-                <MessageSquare size={32} color="rgba(255,255,255,0.2)" />
-                <Text style={styles.noReviewsText}>No reviews with comments yet</Text>
+                <Link2 size={32} color="rgba(255,255,255,0.2)" />
+                <Text style={styles.noReviewsText}>No on-chain reviews yet</Text>
+                <Text style={styles.noReviewsSubtext}>Be the first to rate this model!</Text>
               </View>
             ) : (
               reviews.map((review, idx) => (
@@ -878,7 +974,6 @@ const RateModal = ({
   if (!model) return null;
 
   const shortName = model.name.split(':').pop()?.trim() || model.name;
-  const isUpdate = !!existingRating;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -903,9 +998,7 @@ const RateModal = ({
                   <Cpu size={24} color="#00FF41" />
                 )}
               </View>
-              <Text style={styles.rateModalTitle}>
-                {isUpdate ? 'Update Your Rating' : 'Rate This Model'}
-              </Text>
+              <Text style={styles.rateModalTitle}>Rate This Model</Text>
               <Text style={styles.rateModalModelName}>{shortName}</Text>
             </View>
 
@@ -935,25 +1028,26 @@ const RateModal = ({
               <Text style={styles.commentCharCount}>{comment.length}/500</Text>
             </View>
 
-            {/* Tags */}
+            {/* Tags - LLM Capability Categories */}
             <View style={styles.tagSection}>
-              <Text style={styles.tagLabel}>Highlight (Optional)</Text>
+              <Text style={styles.tagLabel}>Best For (Optional)</Text>
               <View style={styles.tagOptions}>
                 {TAG_OPTIONS.map((tag) => (
                   <TouchableOpacity
-                    key={tag}
+                    key={tag.id}
                     style={[
                       styles.tagOption,
-                      selectedTag === tag && styles.tagOptionSelected
+                      selectedTag === tag.id && [styles.tagOptionSelected, { borderColor: tag.color, backgroundColor: `${tag.color}20` }]
                     ]}
-                    onPress={() => setSelectedTag(selectedTag === tag ? '' : tag)}
+                    onPress={() => setSelectedTag(selectedTag === tag.id ? '' : tag.id)}
                     disabled={isSubmitting}
                   >
+                    <Text style={styles.tagEmoji}>{tag.emoji}</Text>
                     <Text style={[
                       styles.tagOptionText,
-                      selectedTag === tag && styles.tagOptionTextSelected
+                      selectedTag === tag.id && [styles.tagOptionTextSelected, { color: tag.color }]
                     ]}>
-                      {tag}
+                      {tag.label}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -993,11 +1087,7 @@ const RateModal = ({
                 <View style={styles.submitBtnContent}>
                   <Shield size={18} color="#000" />
                   <Text style={styles.submitBtnText}>
-                    {selectedScore === 0
-                      ? 'Select a Rating'
-                      : isUpdate
-                        ? 'Update Rating'
-                        : 'Submit Rating'}
+                    {selectedScore === 0 ? 'Select a Rating' : 'Submit On-Chain Rating'}
                   </Text>
                 </View>
               )}
@@ -1068,6 +1158,25 @@ export default function ReputationPage() {
   const [displayCount, setDisplayCount] = useState(30); // Pagination
   const MODELS_PER_PAGE = 30;
 
+  // Recent activity state
+  interface ActivityItem {
+    id: number;
+    score: number;
+    tag1?: string;
+    comment?: string;
+    txHash?: string;
+    createdAt: string;
+    reviewer: string;
+    reviewerAddress?: string;
+    model: {
+      id: number;
+      openrouterId: string;
+      name: string;
+      iconUrl?: string;
+    };
+  }
+  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
+
   // Fetch models from API
   const fetchModels = useCallback(async () => {
     try {
@@ -1130,6 +1239,17 @@ export default function ReputationPage() {
     }
   }, [getHeaders]);
 
+  // Fetch recent activity (global)
+  const fetchRecentActivity = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/reputation/recent-activity?limit=8`);
+      const data = await res.json();
+      setRecentActivity(data.activity || []);
+    } catch (err) {
+      console.error('[Reputation] Failed to fetch recent activity:', err);
+    }
+  }, []);
+
   // Load all data
   useEffect(() => {
     const loadData = async () => {
@@ -1143,6 +1263,9 @@ export default function ReputationPage() {
       } catch (err) {
         console.error('[Reputation] Failed to fetch total ratings:', err);
       }
+
+      // Fetch recent activity
+      await fetchRecentActivity();
 
       const userAddress = user?.walletAddress;
       const batchSize = 10;
@@ -1170,7 +1293,7 @@ export default function ReputationPage() {
     };
 
     loadData();
-  }, [fetchModels, fetchOnChainData, user?.walletAddress]);
+  }, [fetchModels, fetchOnChainData, fetchRecentActivity, user?.walletAddress]);
 
   // Handle rating submission (hybrid: on-chain + API)
   const handleSubmitRating = async (score: number, comment: string, tag: string) => {
@@ -1310,19 +1433,18 @@ export default function ReputationPage() {
     setShowReviewsModal(true);
   };
 
-  // Handle open rate modal
+  // Handle open rate modal - only if user hasn't rated yet
   const handleOpenRateModal = async (model: ModelWithReputation) => {
-    setSelectedModel(model);
-    setSelectedModelRating(model.userRating);
-
-    // Fetch existing comment if user has rated
-    if (model.userRating && user) {
-      const existingComment = await fetchUserComment(model.id);
-      setSelectedModelComment(existingComment);
-    } else {
-      setSelectedModelComment(undefined);
+    // Block if user already rated this model
+    if (model.userRating) {
+      console.log('[Reputation] User already rated this model, opening reviews instead');
+      handleViewReviews(model);
+      return;
     }
 
+    setSelectedModel(model);
+    setSelectedModelRating(undefined);
+    setSelectedModelComment(undefined);
     setShowRateModal(true);
   };
 
@@ -1474,6 +1596,53 @@ export default function ReputationPage() {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              {/* Recent Activity */}
+              {recentActivity.length > 0 && (
+                <View style={styles.sidebarActivity}>
+                  <Text style={styles.sidebarStatsTitle}>Recent Activity</Text>
+                  {recentActivity.slice(0, 5).map((activity) => {
+                    const shortModel = activity.model.name.split(':').pop()?.trim() || activity.model.name;
+                    const tagConfig = activity.tag1 ? TAG_OPTIONS.find(t => t.id === activity.tag1?.toLowerCase()) : null;
+                    return (
+                      <View key={activity.id} style={styles.activityItem}>
+                        <View style={styles.activityHeader}>
+                          <View style={styles.activityStars}>
+                            {[1, 2, 3, 4, 5].map((s) => (
+                              <Star key={s} size={10} color="#FFD700" fill={activity.score >= s ? '#FFD700' : 'transparent'} />
+                            ))}
+                          </View>
+                          <Text style={styles.activityTime}>
+                            {new Date(activity.createdAt).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <Text style={styles.activityModel} numberOfLines={1}>{shortModel}</Text>
+                        <View style={styles.activityFooter}>
+                          {tagConfig && (
+                            <View style={[styles.activityTag, { backgroundColor: `${tagConfig.color}20` }]}>
+                              <Text style={styles.activityTagEmoji}>{tagConfig.emoji}</Text>
+                              <Text style={[styles.activityTagText, { color: tagConfig.color }]}>{tagConfig.label}</Text>
+                            </View>
+                          )}
+                          {activity.txHash && (
+                            <TouchableOpacity
+                              style={styles.activityTxLink}
+                              onPress={() => {
+                                if (Platform.OS === 'web') {
+                                  window.open(`https://snowtrace.io/tx/${activity.txHash}`, '_blank');
+                                }
+                              }}
+                            >
+                              <Link2 size={8} color="#00FF41" />
+                              <Text style={styles.activityTxText}>TX</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </ScrollView>
           </View>
         )}
@@ -1792,11 +1961,80 @@ const styles = StyleSheet.create({
     color: '#00FF41',
     fontWeight: '600',
   },
+  // Recent Activity in Sidebar
+  sidebarActivity: {
+    marginTop: 20,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  activityItem: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  activityHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  activityStars: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  activityTime: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.4)',
+    fontFamily: FONT_MONO,
+  },
+  activityModel: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  activityFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  activityTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  activityTagEmoji: {
+    fontSize: 9,
+  },
+  activityTagText: {
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  activityTxLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  activityTxText: {
+    fontSize: 9,
+    color: '#00FF41',
+    fontFamily: FONT_MONO,
+    fontWeight: '600',
+  },
   contentDesktop: {
     flex: 1,
     paddingHorizontal: 32,
     paddingTop: 16,
-    maxWidth: 1200,
   },
   searchSectionDesktop: {
     paddingHorizontal: 0,
@@ -1816,9 +2054,9 @@ const styles = StyleSheet.create({
   modelsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 20,
+    gap: 16,
     paddingBottom: 20,
-    justifyContent: 'flex-start',
+    justifyContent: 'stretch',
   },
   emptyStateSubtext: {
     fontSize: 14,
@@ -2218,10 +2456,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   modelCardDesktop: {
-    width: 320,
-    maxWidth: 320,
-    flexGrow: 0,
-    flexShrink: 0,
+    width: '31%',
+    minWidth: 280,
+    maxWidth: 400,
+    flexGrow: 1,
   },
   modelCardMain: {
     flexDirection: 'row',
@@ -2504,7 +2742,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tagOption: {
-    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -2522,6 +2763,9 @@ const styles = StyleSheet.create({
   tagOptionTextSelected: {
     color: '#00FF41',
     fontWeight: '600',
+  },
+  tagEmoji: {
+    fontSize: 12,
   },
 
   // Info Boxes
@@ -2686,57 +2930,194 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#00FF41',
     textAlign: 'center',
+    marginBottom: 12,
+  },
+  reviewsModalIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.3)',
+  },
+  reviewsCountBadge: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.2)',
+  },
+  reviewsCountText: {
+    fontSize: 11,
+    color: '#00FF41',
+    fontWeight: '600',
   },
   reviewsList: {
-    maxHeight: 300,
+    maxHeight: 350,
   },
   noReviews: {
     alignItems: 'center',
-    paddingVertical: 30,
+    paddingVertical: 40,
   },
   noReviewsText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 10,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 12,
+    fontWeight: '600',
+  },
+  noReviewsSubtext: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.3)',
+    marginTop: 4,
   },
   reviewCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   reviewHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   reviewerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   reviewerAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0, 255, 65, 0.2)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 255, 65, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.3)',
   },
   reviewerAvatarText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: '#00FF41',
   },
   reviewerName: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    color: '#fff',
+    fontFamily: FONT_MONO,
+    fontWeight: '600',
+  },
+  reviewDate: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 2,
+  },
+  reviewScoreContainer: {
+    alignItems: 'flex-end',
+  },
+  reviewScoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  reviewScoreEmoji: {
+    fontSize: 14,
+  },
+  reviewScoreNum: {
+    fontSize: 13,
+    fontWeight: '700',
     fontFamily: FONT_MONO,
   },
+  reviewTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  reviewTagLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  reviewTagBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.3)',
+  },
+  reviewTagEmoji: {
+    fontSize: 12,
+  },
+  reviewTagText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#00FF41',
+  },
+  reviewCommentBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  reviewComment: {
+    flex: 1,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: 19,
+  },
+  reviewNoComment: {
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  reviewNoCommentText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.3)',
+    fontStyle: 'italic',
+  },
+  reviewTxLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(0, 255, 65, 0.08)',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.15)',
+  },
+  reviewTxBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  reviewTxLabel: {
+    fontSize: 11,
+    color: '#00FF41',
+    fontWeight: '600',
+  },
+  reviewTxHash: {
+    flex: 1,
+    fontSize: 11,
+    color: '#00FF41',
+    fontFamily: FONT_MONO,
+  },
+  // Legacy styles (kept for compatibility)
   reviewScore: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2748,24 +3129,12 @@ const styles = StyleSheet.create({
     color: '#FFD700',
     fontFamily: FONT_MONO,
   },
-  reviewComment: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    lineHeight: 18,
-  },
-  reviewTags: {
+  reviewFooter: {
     flexDirection: 'row',
-    marginTop: 8,
-  },
-  reviewTag: {
-    backgroundColor: 'rgba(0, 255, 65, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  reviewTagText: {
-    fontSize: 10,
-    color: '#00FF41',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
   },
   reviewsCloseBtn: {
     backgroundColor: 'rgba(255,255,255,0.1)',

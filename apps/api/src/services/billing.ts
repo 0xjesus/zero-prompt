@@ -115,10 +115,10 @@ export class BillingService {
 
       console.log(`[Billing] Processing deposit: ${depositEvent.amountFormatted} AVAX = $${amountUSD.toFixed(2)}`);
 
-      // Save to database
+      // Save to database (normalize wallet address to lowercase for consistent lookups)
       await prisma.vaultDeposit.create({
         data: {
-          walletAddress: depositEvent.user,
+          walletAddress: depositEvent.user.toLowerCase(),
           amountAVAX: depositEvent.amount,
           amountUSD: amountUSD,
           txHash: depositEvent.txHash,

@@ -9,6 +9,8 @@ import {
   Platform,
   ActivityIndicator,
   Image,
+  useWindowDimensions,
+  ScrollView,
 } from "react-native";
 import { X, Coins, Zap } from "lucide-react-native";
 
@@ -66,6 +68,8 @@ export default function DepositModal({
   userAddress,
   onRefreshBalance,
 }: DepositModalProps) {
+  const { width, height } = useWindowDimensions();
+  const isMobile = width < 500;
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<string>("1"); // Default to $1
   const [isProcessing, setIsProcessing] = useState(false);
@@ -179,157 +183,179 @@ export default function DepositModal({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType={isMobile ? "slide" : "fade"}
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={[styles.container, { backgroundColor: theme.surface }]}>
+      <View style={[styles.overlay, isMobile && { justifyContent: 'flex-end', padding: 0 }]}>
+        <View style={[
+          styles.container,
+          { backgroundColor: theme.surface },
+          isMobile && {
+            width: '100%',
+            maxWidth: '100%',
+            maxHeight: height * 0.9,
+            borderRadius: 0,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 16,
+          }
+        ]}>
+          {/* Mobile drag handle */}
+          {isMobile && (
+            <View style={{ alignItems: 'center', paddingBottom: 12 }}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+            </View>
+          )}
+
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, isMobile && { marginBottom: 12 }]}>
             <View style={styles.headerLeft}>
               <Image
                 source={require('../assets/logos/avax-logo.png')}
-                style={styles.headerLogo}
+                style={[styles.headerLogo, isMobile && { width: 24, height: 24 }]}
               />
-              <Text style={[styles.title, { color: theme.text }]}>
+              <Text style={[styles.title, { color: theme.text }, isMobile && { fontSize: 18 }]}>
                 Add Credits
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <X color={theme.textMuted} size={24} />
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, isMobile && { padding: 6 }]}>
+              <X color={theme.textMuted} size={isMobile ? 20 : 24} />
             </TouchableOpacity>
           </View>
 
-          {/* Stepper */}
-          <DepositStepper />
-
-          {requiredAmount && !depositSuccess && !isVerifying && (
-            <View style={[styles.requiredBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-              <Text style={{ color: '#EF4444', fontSize: 13 }}>
-                Minimum required: ${parseFloat(requiredAmount).toFixed(2)} USD
-              </Text>
-            </View>
-          )}
-
-          {/* Verifying Screen */}
-          {isVerifying ? (
-            <View style={styles.processingContainer}>
-              <ActivityIndicator size="large" color="#8B5CF6" />
-              <Text style={[styles.processingTitle, { color: theme.text }]}>
-                Verifying Deposit...
-              </Text>
-              <Text style={[styles.processingText, { color: theme.textMuted }]}>
-                Waiting for your balance to update.
-              </Text>
-              {successTxHash && (
-                <TouchableOpacity
-                  style={styles.explorerLink}
-                  onPress={() => {
-                    if (typeof window !== "undefined") {
-                      window.open(`https://snowtrace.io/tx/${successTxHash}`, "_blank");
-                    }
-                  }}
-                >
-                  <Text style={styles.explorerLinkText}>View on Snowtrace ↗</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : depositSuccess ? (
-            /* Success Screen */
-            <View style={styles.successSection}>
-              <View style={styles.successIconContainer}>
-                <View style={[styles.successCheckCircle, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
-                  <Text style={styles.successCheckmark}>✓</Text>
-                </View>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1 }}
+          >
+            {requiredAmount && !depositSuccess && !isVerifying && (
+              <View style={[styles.requiredBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }, isMobile && { padding: 10, marginBottom: 12 }]}>
+                <Text style={{ color: '#EF4444', fontSize: isMobile ? 12 : 13 }}>
+                  Minimum required: ${parseFloat(requiredAmount).toFixed(2)} USD
+                </Text>
               </View>
+            )}
 
-              <Text style={[styles.successTitle, { color: theme.text }]}>
-                Deposit Successful!
-              </Text>
+            {/* Verifying Screen */}
+            {isVerifying ? (
+              <View style={[styles.processingContainer, isMobile && { padding: 30 }]}>
+                <ActivityIndicator size="large" color="#8B5CF6" />
+                <Text style={[styles.processingTitle, { color: theme.text }, isMobile && { fontSize: 18 }]}>
+                  Verifying Deposit...
+                </Text>
+                <Text style={[styles.processingText, { color: theme.textMuted }, isMobile && { fontSize: 14 }]}>
+                  Waiting for your balance to update.
+                </Text>
+                {successTxHash && (
+                  <TouchableOpacity
+                    style={styles.explorerLink}
+                    onPress={() => {
+                      if (typeof window !== "undefined") {
+                        window.open(`https://snowtrace.io/tx/${successTxHash}`, "_blank");
+                      }
+                    }}
+                  >
+                    <Text style={[styles.explorerLinkText, isMobile && { fontSize: 13 }]}>View on Snowtrace ↗</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : depositSuccess ? (
+              /* Success Screen */
+              <View style={[styles.successSection, isMobile && { paddingVertical: 30, paddingHorizontal: 16 }]}>
+                <View style={styles.successIconContainer}>
+                  <View style={[styles.successCheckCircle, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }, isMobile && { width: 60, height: 60 }]}>
+                    <Text style={[styles.successCheckmark, isMobile && { fontSize: 36 }]}>✓</Text>
+                  </View>
+                </View>
 
-              <Text style={[styles.successMessage, { color: theme.textMuted }]}>
-                ${selectedAmount} has been added to your account
-              </Text>
+                <Text style={[styles.successTitle, { color: theme.text }, isMobile && { fontSize: 20 }]}>
+                  Deposit Successful!
+                </Text>
 
-              {successTxHash && (
+                <Text style={[styles.successMessage, { color: theme.textMuted }, isMobile && { fontSize: 14 }]}>
+                  ${selectedAmount} has been added to your account
+                </Text>
+
+                {successTxHash && (
+                  <TouchableOpacity
+                    style={styles.explorerLink}
+                    onPress={() => {
+                      if (typeof window !== "undefined") {
+                        window.open(`https://snowtrace.io/tx/${successTxHash}`, "_blank");
+                      }
+                    }}
+                  >
+                    <Text style={[styles.explorerLinkText, isMobile && { fontSize: 13 }]}>View transaction ↗</Text>
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
-                  style={styles.explorerLink}
+                  style={[styles.doneButton, { backgroundColor: '#10B981' }, isMobile && { paddingVertical: 12, minWidth: 160 }]}
                   onPress={() => {
-                    if (typeof window !== "undefined") {
-                      window.open(`https://snowtrace.io/tx/${successTxHash}`, "_blank");
-                    }
+                    onClose();
                   }}
                 >
-                  <Text style={styles.explorerLinkText}>View transaction ↗</Text>
+                  <Text style={[styles.doneButtonText, isMobile && { fontSize: 14 }]}>Done</Text>
                 </TouchableOpacity>
-              )}
+              </View>
+            ) : (
+              /* Payment Widget Area */
+              <View style={[styles.widgetContainer, isMobile && { marginTop: 0 }]}>
+                {isProcessing ? (
+                  <View style={[styles.processingContainer, isMobile && { padding: 30 }]}>
+                    <ActivityIndicator size="large" color="#8B5CF6" />
+                    <Text style={[styles.processingText, { color: theme.text }, isMobile && { fontSize: 14 }]}>
+                      Processing your deposit...
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={[styles.widgetPlaceholder, isMobile && { minHeight: 250 }]}>
+                    {/* Deposit Widget */}
+                    {DepositWidgetComponent && (
+                      <Suspense fallback={
+                        <View style={{ padding: isMobile ? 30 : 40, alignItems: 'center' }}>
+                          <ActivityIndicator size="large" color="#8B5CF6" />
+                          <Text style={{ color: theme.textMuted, marginTop: 10, fontSize: isMobile ? 13 : 14 }}>
+                            Loading payment widget...
+                          </Text>
+                        </View>
+                      }>
+                        <DepositWidgetComponent
+                          method="avax"
+                          amountUSD={selectedAmount}
+                          userAddress={userAddress}
+                          onSuccess={(data) => handleDepositComplete(data?.txHash || "success")}
+                          onError={(err) => setError(err.message)}
+                          onCancel={() => setShowWidget(false)}
+                        />
+                      </Suspense>
+                    )}
+                  </View>
+                )}
 
-              <TouchableOpacity
-                style={[styles.doneButton, { backgroundColor: '#10B981' }]}
-                onPress={() => {
-                  onClose();
-                }}
-              >
-                <Text style={styles.doneButtonText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            /* Payment Widget Area */
-            <View style={styles.widgetContainer}>
-              {isProcessing ? (
-                <View style={styles.processingContainer}>
-                  <ActivityIndicator size="large" color="#8B5CF6" />
-                  <Text style={[styles.processingText, { color: theme.text }]}>
-                    Processing your deposit...
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.widgetPlaceholder}>
-                  {/* Deposit Widget */}
-                  {DepositWidgetComponent && (
-                    <Suspense fallback={
-                      <View style={{ padding: 40, alignItems: 'center' }}>
-                        <ActivityIndicator size="large" color="#8B5CF6" />
-                        <Text style={{ color: theme.textMuted, marginTop: 10 }}>
-                          Loading payment widget...
-                        </Text>
-                      </View>
-                    }>
-                      <DepositWidgetComponent
-                        method="avax"
-                        amountUSD={selectedAmount}
-                        userAddress={userAddress}
-                        onSuccess={(data) => handleDepositComplete(data?.txHash || "success")}
-                        onError={(err) => setError(err.message)}
-                        onCancel={() => setShowWidget(false)}
-                      />
-                    </Suspense>
-                  )}
-                </View>
-              )}
+                {!isProcessing && (
+                  <TouchableOpacity
+                    style={[styles.backBtn, isMobile && { marginTop: 12, padding: 10 }]}
+                    onPress={() => setShowWidget(false)}
+                  >
+                    <Text style={{ color: theme.textMuted, fontSize: isMobile ? 13 : 14 }}>
+                      ← Back to payment methods
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
 
-              {!isProcessing && (
-                <TouchableOpacity
-                  style={styles.backBtn}
-                  onPress={() => setShowWidget(false)}
-                >
-                  <Text style={{ color: theme.textMuted }}>
-                    ← Back to payment methods
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-
-          {error && (
-            <View style={[styles.errorBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
-              <Text style={{ color: '#EF4444', fontSize: 13 }}>{error}</Text>
-            </View>
-          )}
+            {error && (
+              <View style={[styles.errorBox, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }, isMobile && { padding: 10, marginTop: 12 }]}>
+                <Text style={{ color: '#EF4444', fontSize: isMobile ? 12 : 13 }}>{error}</Text>
+              </View>
+            )}
+          </ScrollView>
 
           {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: theme.textMuted }]}>
+          <View style={[styles.footer, isMobile && { marginTop: 12, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 20 : 0 }]}>
+            <Text style={[styles.footerText, { color: theme.textMuted }, isMobile && { fontSize: 10 }]}>
               Secure & Non-custodial - Avalanche C-Chain
             </Text>
           </View>

@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   StyleSheet, ActivityIndicator, Image, Platform, useWindowDimensions
 } from 'react-native';
-import { useSignTypedData, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
+import { useSignTypedData, useSendTransaction } from 'wagmi';
 import { getAddress, parseEther } from 'viem';
 import Markdown from 'react-native-markdown-display';
 import {
   Swords, Brain, ImageIcon, CheckCircle, XCircle,
-  Users, Trophy, AlertCircle, Plus, Copy, Terminal, ChevronDown, ChevronUp
+  Users, Trophy, AlertCircle, Plus, Copy, Terminal, ChevronDown, ChevronUp, Download, Share2
 } from 'lucide-react-native';
 import { API_URL } from '../config/api';
 import { MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/constants';
@@ -203,6 +203,163 @@ const curlStyles = StyleSheet.create({
   priceNote: { color: '#666', fontSize: 10, padding: 8, borderTopWidth: 1, borderTopColor: '#222', backgroundColor: '#0f0f0f' },
 });
 
+// Export Button Component - Export results as JSON/Markdown
+const ExportButton = ({
+  data,
+  filename,
+  type = 'battle'
+}: {
+  data: any;
+  filename: string;
+  type?: 'battle' | 'consensus' | 'gallery';
+}) => {
+  const [showMenu, setShowMenu] = useState(false);
+
+  const formatAsMarkdown = () => {
+    let md = `# ZeroPrompt ${type.charAt(0).toUpperCase() + type.slice(1)} Results\n\n`;
+    md += `**Date:** ${new Date().toISOString()}\n\n`;
+
+    if (type === 'battle' && data.results) {
+      md += `## Prompt\n${data.prompt || 'N/A'}\n\n`;
+      md += `## Model Responses\n\n`;
+      data.results.forEach((r: any, i: number) => {
+        md += `### ${i + 1}. ${r.model}\n`;
+        md += `**Latency:** ${r.latency}ms\n\n`;
+        md += `${r.response || 'No response'}\n\n---\n\n`;
+      });
+    } else if (type === 'consensus' && data) {
+      md += `## Question\n${data.prompt || 'N/A'}\n\n`;
+      md += `## Model Opinions\n\n`;
+      data.opinions?.forEach((o: any, i: number) => {
+        md += `### ${i + 1}. ${o.model}\n${o.opinion || 'No opinion'}\n\n`;
+      });
+      if (data.judgment) {
+        md += `## Judge Analysis\n**Judge:** ${data.judgeModel || 'N/A'}\n\n${data.judgment}\n`;
+      }
+    } else if (type === 'gallery' && data.images) {
+      md += `## Prompt\n${data.prompt || 'N/A'}\n\n`;
+      md += `## Generated Images\n\n`;
+      data.images.forEach((img: any, i: number) => {
+        md += `### ${i + 1}. ${img.model}\n`;
+        md += `![Image](${img.url})\n\n`;
+      });
+    }
+    return md;
+  };
+
+  const handleExport = (format: 'json' | 'markdown') => {
+    const content = format === 'json'
+      ? JSON.stringify(data, null, 2)
+      : formatAsMarkdown();
+
+    const mimeType = format === 'json' ? 'application/json' : 'text/markdown';
+    const ext = format === 'json' ? 'json' : 'md';
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    setShowMenu(false);
+  };
+
+  const handleShare = async () => {
+    const text = formatAsMarkdown();
+    if (Platform.OS === 'web' && navigator.share) {
+      try {
+        await navigator.share({ title: `ZeroPrompt ${type} Results`, text });
+      } catch (e) {
+        // User cancelled or share failed
+      }
+    } else if (Platform.OS === 'web') {
+      navigator.clipboard.writeText(text);
+    }
+    setShowMenu(false);
+  };
+
+  return (
+    <View style={exportStyles.container}>
+      <TouchableOpacity
+        style={exportStyles.button}
+        onPress={() => setShowMenu(!showMenu)}
+      >
+        <Download size={14} color="#00FF41" />
+        <Text style={exportStyles.buttonText}>Export</Text>
+      </TouchableOpacity>
+
+      {showMenu && (
+        <View style={exportStyles.menu}>
+          <TouchableOpacity style={exportStyles.menuItem} onPress={() => handleExport('json')}>
+            <Text style={exportStyles.menuItemText}>Download JSON</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={exportStyles.menuItem} onPress={() => handleExport('markdown')}>
+            <Text style={exportStyles.menuItemText}>Download Markdown</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={exportStyles.menuItem} onPress={handleShare}>
+            <Share2 size={12} color="#888" />
+            <Text style={exportStyles.menuItemText}>Share</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+};
+
+const exportStyles = StyleSheet.create({
+  container: {
+    position: 'relative',
+    zIndex: 9999,
+    ...Platform.select({
+      web: { zIndex: 9999 } as any,
+    }),
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(0, 255, 65, 0.1)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 65, 0.3)',
+  },
+  buttonText: { color: '#00FF41', fontSize: 12, fontWeight: '600' },
+  menu: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    minWidth: 160,
+    zIndex: 99999,
+    elevation: 999,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
+        zIndex: 99999,
+      } as any,
+    }),
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333'
+  },
+  menuItemText: { color: '#fff', fontSize: 13 },
+});
+
 // Avalanche config
 const AVALANCHE_CONFIG = {
   chainId: 43114,
@@ -364,13 +521,49 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
-  const [avaxPriceDisplay, setAvaxPriceDisplay] = useState<string | undefined>();
+
+  // Dynamic quote state
+  const [quote, setQuote] = useState<any>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   // Filter to only text models for battle
   const textModels = models.filter(m => {
     const arch = m.architecture;
     return !arch?.output_modalities?.includes('image') && (m.publicPricingPrompt ?? 0) > 0;
   });
+
+  // Fetch quote when models or prompt change
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (selectedModels.length < 2 || !prompt.trim()) {
+        setQuote(null);
+        return;
+      }
+
+      try {
+        setQuoteLoading(true);
+        const response = await fetch(`${API_URL}/agent/quote/battle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            models: selectedModels.map(m => m.openrouterId),
+            prompt
+          })
+        });
+        const data = await response.json();
+        if (data.success) {
+          setQuote(data);
+        }
+      } catch (err) {
+        console.error('Quote fetch failed:', err);
+      } finally {
+        setQuoteLoading(false);
+      }
+    };
+
+    const timeoutId = setTimeout(fetchQuote, 500);
+    return () => clearTimeout(timeoutId);
+  }, [selectedModels, prompt]);
 
   const handleToggleModel = (model: Model) => {
     const isSelected = selectedModels.some(m => m.openrouterId === model.openrouterId);
@@ -415,10 +608,6 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
       // Get prices from challenge
       const usdcOption = challenge.accepts.find((a: any) => a.scheme === 'x402-eip3009');
       const avaxOption = challenge.accepts.find((a: any) => a.scheme === 'x402-native');
-
-      if (avaxOption) {
-        setAvaxPriceDisplay(avaxOption.price);
-      }
 
       let paymentPayload: any;
 
@@ -593,19 +782,27 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
         onChangeText={setPrompt}
       />
 
-      {/* Payment Method Selector */}
+      {/* Payment Method Selector with Dynamic Pricing */}
       <PaymentMethodSelector
         selected={paymentMethod}
         onSelect={setPaymentMethod}
-        avaxPrice={avaxPriceDisplay}
-        usdPrice="0.10"
+        avaxPrice={quote?.payment?.recommendedAVAX}
+        usdPrice={quote?.payment?.recommendedUSDC || (quoteLoading ? '...' : '0.00')}
       />
+
+      {/* Quote Loading Indicator */}
+      {quoteLoading && (
+        <View style={styles.quoteLoading}>
+          <ActivityIndicator size="small" color="#F59E0B" />
+          <Text style={styles.quoteLoadingText}>Calculating price...</Text>
+        </View>
+      )}
 
       {/* Execute Button */}
       <TouchableOpacity
-        style={[styles.executeBtn, (loading || selectedModels.length < 2) && styles.executeBtnDisabled]}
+        style={[styles.executeBtn, (loading || selectedModels.length < 2 || !quote) && styles.executeBtnDisabled]}
         onPress={executeBattle}
-        disabled={loading || selectedModels.length < 2}
+        disabled={loading || selectedModels.length < 2 || !quote}
       >
         {loading ? (
           <ActivityIndicator color="#000" />
@@ -613,7 +810,7 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
           <>
             <Swords size={20} color="#000" />
             <Text style={styles.executeBtnText}>
-              {!isConnected ? 'Connect Wallet' : selectedModels.length < 2 ? 'Select 2+ Models' : `Battle ${selectedModels.length} Models`}
+              {!isConnected ? 'Connect Wallet' : selectedModels.length < 2 ? 'Select 2+ Models' : !quote ? 'Getting Quote...' : `Battle ${selectedModels.length} Models`}
             </Text>
           </>
         )}
@@ -632,11 +829,18 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
         <View style={styles.resultsContainer}>
           {/* Header */}
           <View style={styles.resultsHeader}>
-            <Trophy size={20} color="#F59E0B" />
-            <Text style={styles.resultsTitle}>⚔️ Battle Results</Text>
-            <View style={styles.latencyBadge}>
-              <Text style={styles.latencyText}>{results.totalLatency}ms</Text>
+            <View style={styles.resultsHeaderLeft}>
+              <Trophy size={20} color="#F59E0B" />
+              <Text style={styles.resultsTitle}>Battle Results</Text>
+              <View style={styles.latencyBadge}>
+                <Text style={styles.latencyText}>{results.totalLatency}ms</Text>
+              </View>
             </View>
+            <ExportButton
+              data={{ ...results, prompt }}
+              filename={`zeroprompt-battle-${Date.now()}`}
+              type="battle"
+            />
           </View>
 
           {/* Comparison Grid */}
@@ -698,13 +902,50 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
-  const [avaxPriceDisplay, setAvaxPriceDisplay] = useState<string | undefined>();
+
+  // Dynamic quote state
+  const [quote, setQuote] = useState<any>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
   // Filter to only text models for consensus
   const textModels = models.filter(m => {
     const arch = m.architecture;
     return !arch?.output_modalities?.includes('image') && (m.publicPricingPrompt ?? 0) > 0;
   });
+
+  // Fetch quote when models, judge, or prompt change
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (selectedModels.length < 2 || !judgeModel || !prompt.trim()) {
+        setQuote(null);
+        return;
+      }
+
+      try {
+        setQuoteLoading(true);
+        const response = await fetch(`${API_URL}/agent/quote/consensus`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            models: selectedModels.map(m => m.openrouterId),
+            judge: judgeModel.openrouterId,
+            prompt
+          })
+        });
+        const data = await response.json();
+        if (data.success) {
+          setQuote(data);
+        }
+      } catch (err) {
+        console.error('Quote fetch failed:', err);
+      } finally {
+        setQuoteLoading(false);
+      }
+    };
+
+    const timeoutId = setTimeout(fetchQuote, 500);
+    return () => clearTimeout(timeoutId);
+  }, [selectedModels, judgeModel, prompt]);
 
   const handleToggleModel = (model: Model) => {
     const isSelected = selectedModels.some(m => m.openrouterId === model.openrouterId);
@@ -758,10 +999,6 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
       const challenge = await initialRes.json();
       const usdcOption = challenge.accepts.find((a: any) => a.scheme === 'x402-eip3009');
       const avaxOption = challenge.accepts.find((a: any) => a.scheme === 'x402-native');
-
-      if (avaxOption) {
-        setAvaxPriceDisplay(avaxOption.price);
-      }
 
       let paymentPayload: any;
 
@@ -952,19 +1189,27 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
         onChangeText={setPrompt}
       />
 
-      {/* Payment Method Selector */}
+      {/* Payment Method Selector with Dynamic Pricing */}
       <PaymentMethodSelector
         selected={paymentMethod}
         onSelect={setPaymentMethod}
-        avaxPrice={avaxPriceDisplay}
-        usdPrice="0.08"
+        avaxPrice={quote?.payment?.recommendedAVAX}
+        usdPrice={quote?.payment?.recommendedUSDC || (quoteLoading ? '...' : '0.00')}
       />
+
+      {/* Quote Loading Indicator */}
+      {quoteLoading && (
+        <View style={styles.quoteLoading}>
+          <ActivityIndicator size="small" color="#8B5CF6" />
+          <Text style={styles.quoteLoadingText}>Calculating price...</Text>
+        </View>
+      )}
 
       {/* Execute Button */}
       <TouchableOpacity
-        style={[styles.executeBtn, { backgroundColor: '#8B5CF6' }, (loading || selectedModels.length < 2 || !judgeModel) && styles.executeBtnDisabled]}
+        style={[styles.executeBtn, { backgroundColor: '#8B5CF6' }, (loading || selectedModels.length < 2 || !judgeModel || !quote) && styles.executeBtnDisabled]}
         onPress={executeConsensus}
-        disabled={loading || selectedModels.length < 2 || !judgeModel}
+        disabled={loading || selectedModels.length < 2 || !judgeModel || !quote}
       >
         {loading ? (
           <ActivityIndicator color="#FFF" />
@@ -972,7 +1217,7 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
           <>
             <Users size={20} color="#FFF" />
             <Text style={[styles.executeBtnText, { color: '#FFF' }]}>
-              {!isConnected ? 'Connect Wallet' : selectedModels.length < 2 ? 'Select 2+ Models' : !judgeModel ? 'Select Judge' : 'Get Consensus'}
+              {!isConnected ? 'Connect Wallet' : selectedModels.length < 2 ? 'Select 2+ Models' : !judgeModel ? 'Select Judge' : !quote ? 'Getting Quote...' : 'Get Consensus'}
             </Text>
           </>
         )}
@@ -989,12 +1234,21 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
       {/* Results */}
       {results && (
         <View style={styles.resultsContainer}>
+          {/* Export Button */}
+          <View style={styles.resultsHeaderRight}>
+            <ExportButton
+              data={{ ...results, prompt, judgeModel: judgeModel?.openrouterId }}
+              filename={`zeroprompt-consensus-${Date.now()}`}
+              type="consensus"
+            />
+          </View>
+
           {/* Consensus Analysis */}
           {results.consensus && (
             <View style={[styles.consensusBox, { borderColor: '#10B981' }]}>
               <View style={styles.consensusHeader}>
                 <CheckCircle size={20} color="#10B981" />
-                <Text style={styles.consensusTitle}>🎯 AI Consensus</Text>
+                <Text style={styles.consensusTitle}>AI Consensus</Text>
               </View>
               {results.judgeModel && (
                 <View style={styles.judgeBadge}>
@@ -1072,7 +1326,43 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
-  const [avaxPriceDisplay, setAvaxPriceDisplay] = useState<string | undefined>();
+
+  // Dynamic quote state
+  const [quote, setQuote] = useState<any>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
+  // Fetch quote when models or prompt change
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (selectedModels.length < 1 || !prompt.trim()) {
+        setQuote(null);
+        return;
+      }
+
+      try {
+        setQuoteLoading(true);
+        const response = await fetch(`${API_URL}/agent/quote/gallery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            models: selectedModels.map(m => m.openrouterId),
+            prompt
+          })
+        });
+        const data = await response.json();
+        if (data.success) {
+          setQuote(data);
+        }
+      } catch (err) {
+        console.error('Quote fetch failed:', err);
+      } finally {
+        setQuoteLoading(false);
+      }
+    };
+
+    const timeoutId = setTimeout(fetchQuote, 500);
+    return () => clearTimeout(timeoutId);
+  }, [selectedModels, prompt]);
 
   // Filter to only image generation models
   const imageModels = models.filter(m => {
@@ -1135,10 +1425,6 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
       const challenge = await initialRes.json();
       const usdcOption = challenge.accepts.find((a: any) => a.scheme === 'x402-eip3009');
       const avaxOption = challenge.accepts.find((a: any) => a.scheme === 'x402-native');
-
-      if (avaxOption) {
-        setAvaxPriceDisplay(avaxOption.price);
-      }
 
       let paymentPayload: any;
 
@@ -1297,19 +1583,27 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
         onChangeText={setPrompt}
       />
 
-      {/* Payment Method Selector */}
+      {/* Payment Method Selector with Dynamic Pricing */}
       <PaymentMethodSelector
         selected={paymentMethod}
         onSelect={setPaymentMethod}
-        avaxPrice={avaxPriceDisplay}
-        usdPrice="0.15"
+        avaxPrice={quote?.payment?.recommendedAVAX}
+        usdPrice={quote?.payment?.recommendedUSDC || (quoteLoading ? '...' : '0.00')}
       />
+
+      {/* Quote Loading Indicator */}
+      {quoteLoading && (
+        <View style={styles.quoteLoading}>
+          <ActivityIndicator size="small" color="#EC4899" />
+          <Text style={styles.quoteLoadingText}>Calculating price...</Text>
+        </View>
+      )}
 
       {/* Execute Button */}
       <TouchableOpacity
-        style={[styles.executeBtn, { backgroundColor: '#EC4899' }, (loading || selectedModels.length < 1) && styles.executeBtnDisabled]}
+        style={[styles.executeBtn, { backgroundColor: '#EC4899' }, (loading || selectedModels.length < 1 || !quote) && styles.executeBtnDisabled]}
         onPress={executeGallery}
-        disabled={loading || selectedModels.length < 1}
+        disabled={loading || selectedModels.length < 1 || !quote}
       >
         {loading ? (
           <ActivityIndicator color="#FFF" />
@@ -1317,7 +1611,7 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
           <>
             <ImageIcon size={20} color="#FFF" />
             <Text style={[styles.executeBtnText, { color: '#FFF' }]}>
-              {!isConnected ? 'Connect Wallet' : selectedModels.length < 1 ? 'Select Models' : `Generate ${selectedModels.length} Image${selectedModels.length !== 1 ? 's' : ''}`}
+              {!isConnected ? 'Connect Wallet' : selectedModels.length < 1 ? 'Select Models' : !quote ? 'Getting Quote...' : `Generate ${selectedModels.length} Image${selectedModels.length !== 1 ? 's' : ''}`}
             </Text>
           </>
         )}
@@ -1335,11 +1629,18 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
       {results && (
         <View style={styles.resultsContainer}>
           <View style={styles.resultsHeader}>
-            <ImageIcon size={20} color="#EC4899" />
-            <Text style={styles.resultsTitle}>🎨 Generated Images</Text>
-            <View style={styles.latencyBadge}>
-              <Text style={styles.latencyText}>{results.totalLatency}ms</Text>
+            <View style={styles.resultsHeaderLeft}>
+              <ImageIcon size={20} color="#EC4899" />
+              <Text style={styles.resultsTitle}>Generated Images</Text>
+              <View style={styles.latencyBadge}>
+                <Text style={styles.latencyText}>{results.totalLatency}ms</Text>
+              </View>
             </View>
+            <ExportButton
+              data={{ ...results, prompt }}
+              filename={`zeroprompt-gallery-${Date.now()}`}
+              type="gallery"
+            />
           </View>
 
           <Text style={styles.comparisonLabel}>MULTI-MODEL COMPARISON</Text>
@@ -1698,14 +1999,31 @@ const styles = StyleSheet.create({
   resultsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 16,
+    zIndex: 9999,
+    position: 'relative',
+  },
+  resultsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 200,
+  },
+  resultsHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginBottom: 12,
+    zIndex: 9999,
   },
   resultsTitle: {
     color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
-    flex: 1,
   },
   latencyBadge: {
     backgroundColor: '#1a1a1a',
@@ -1916,5 +2234,18 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 250,
     maxWidth: '49%',
+  },
+  // Quote loading indicator
+  quoteLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    marginBottom: 12,
+  },
+  quoteLoadingText: {
+    color: '#888',
+    fontSize: 12,
   },
 });

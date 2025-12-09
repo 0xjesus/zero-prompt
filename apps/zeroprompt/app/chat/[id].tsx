@@ -2022,6 +2022,7 @@ export default function ChatScreen() {
     checkAndPromptCredits, refreshBilling
   } = useBilling();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const isDesktop = width > 1024;
   const isMobile = width < 600;
   
@@ -2478,18 +2479,21 @@ export default function ChatScreen() {
           />
       )}
 
-      <SafeAreaView style={{flex: 1, flexDirection: 'column', overflow: 'hidden'}} edges={['top', 'left', 'right']}>
-        {/* Modern Top Bar */}
+      <View style={{flex: 1, flexDirection: 'column', overflow: 'hidden', backgroundColor: '#000'}}>
+        {/* Modern Top Bar - with safe area padding for Android */}
         <View style={{
-            height: 56,
+            paddingTop: Platform.OS === 'android' ? insets.top : 0,
             borderBottomWidth: 1,
             borderBottomColor: 'rgba(255,255,255,0.06)',
+            backgroundColor: 'rgba(0,0,0,0.95)'
+        }}>
+          <View style={{
+            height: 56,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
             paddingHorizontal: 16,
-            backgroundColor: 'rgba(0,0,0,0.2)'
-        }}>
+          }}>
              <View style={{flexDirection: 'row', alignItems: 'center', gap: 12}}>
                 <TouchableOpacity
                     onPress={() => setSidebarOpen(!isSidebarOpen)}
@@ -2540,6 +2544,7 @@ export default function ChatScreen() {
                     <Text style={{color: theme.primary, fontSize: 13, fontWeight: '600'}}>New</Text>
                 </TouchableOpacity>
              </View>
+          </View>
         </View>
 
         {/* Chat Container - Centered like ChatGPT */}
@@ -2875,8 +2880,8 @@ export default function ChatScreen() {
                 </View>
             </View>
         </KeyboardAvoidingView>
-      </SafeAreaView>
-      
+      </View>
+
       {/* Model Selector Modal - New Design */}
       <ModelSelectorModal
           visible={showModelSelector}
