@@ -865,6 +865,29 @@ agentRouter.post('/image-gallery',
             imageUrl = data.image;
           }
 
+          // Format 6: message.images array (Gemini/GPT-5 style via OpenRouter)
+          if (!imageUrl && message?.images && Array.isArray(message.images)) {
+            const firstImage = message.images[0];
+            if (typeof firstImage === 'string') {
+              // Direct URL or base64
+              imageUrl = firstImage;
+            } else if (firstImage?.url) {
+              imageUrl = firstImage.url;
+            } else if (firstImage?.b64_json || firstImage?.base64) {
+              const b64 = firstImage.b64_json || firstImage.base64;
+              imageUrl = `data:image/png;base64,${b64}`;
+            }
+          }
+
+          // Format 7: Check for inline_data in content parts (Gemini native format)
+          if (!imageUrl && Array.isArray(content)) {
+            const inlineDataPart = content.find((p: any) => p.inline_data?.data);
+            if (inlineDataPart?.inline_data) {
+              const mimeType = inlineDataPart.inline_data.mime_type || 'image/png';
+              imageUrl = `data:${mimeType};base64,${inlineDataPart.inline_data.data}`;
+            }
+          }
+
           console.log(`[ImageGallery] ${modelId} extracted imageUrl:`, imageUrl ? 'found' : 'NOT FOUND');
 
           return {
