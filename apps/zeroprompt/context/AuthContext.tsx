@@ -332,23 +332,48 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
     }
   }, [signMessageAsync, disconnect, verifySession]);
 
+  // Track last authenticated address to prevent duplicate auth attempts
+  const lastAuthenticatedAddress = useRef<string | null>(null);
+
   // Watch for wallet connection changes
   useEffect(() => {
     if (Platform.OS !== "web") return;
 
     // Don't do anything if auth is already in progress or signature was requested
     if (authInProgress.current || signatureRequested.current) {
+      console.log("[Auth] ⏳ Skipping - auth in progress or signature pending");
       return;
     }
 
     if (isConnected && address && !user) {
+      // Check if we already authenticated this address in this session
+      if (lastAuthenticatedAddress.current?.toLowerCase() === address.toLowerCase()) {
+        console.log("[Auth] ⚠️ Already attempted auth for this address, skipping");
+        return;
+      }
+
+      // Check if we have a valid saved session for this wallet
+      const savedToken = safeLocalStorage.getItem("session_token");
+      const savedWallet = safeLocalStorage.getItem("wallet_address");
+      if (savedToken && savedWallet?.toLowerCase() === address.toLowerCase()) {
+        console.log("[Auth] ✅ Found existing session, verifying...");
+        verifySession(savedToken).then(isValid => {
+          if (isValid) {
+            setToken(savedToken);
+            lastAuthenticatedAddress.current = address;
+          }
+        });
+        return;
+      }
+
       // Wallet just connected, authenticate with backend
       const timeoutId = setTimeout(() => {
         if (!authInProgress.current && !signatureRequested.current && !user) {
           console.log("[Auth] 🔗 Wallet connected, starting auth for:", address);
+          lastAuthenticatedAddress.current = address;
           authenticateWithBackend(address);
         }
-      }, 300);
+      }, 500); // Increased delay to prevent race conditions
       return () => clearTimeout(timeoutId);
     } else if (!isConnected && user) {
       // Wallet disconnected - keep session if we have a valid token
@@ -359,8 +384,11 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
         console.log("[Auth] 🔌 Wallet disconnected (no session), logging out");
         handleLogout();
       }
+    } else if (!isConnected && !user) {
+      // Reset the last authenticated address when fully disconnected
+      lastAuthenticatedAddress.current = null;
     }
-  }, [isConnected, address, user, authenticateWithBackend]);
+  }, [isConnected, address, user, authenticateWithBackend, verifySession]);
 
   const handleLogout = useCallback(() => {
     // Call backend logout
@@ -376,6 +404,9 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
     setToken(null);
     setConnectionError(null);
     sessionVerified.current = false;
+    lastAuthenticatedAddress.current = null; // Reset to allow re-auth
+    authInProgress.current = false;
+    signatureRequested.current = false;
     safeLocalStorage.removeItem("session_token");
     safeLocalStorage.removeItem("wallet_address");
 
