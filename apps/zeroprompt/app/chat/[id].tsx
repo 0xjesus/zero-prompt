@@ -18,7 +18,9 @@ import {
   Clipboard,
   Image,
   ScrollView,
-  Linking
+  Linking,
+  Share,
+  Alert
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Markdown from 'react-native-markdown-display';
@@ -44,6 +46,7 @@ import ModelSelectorModal from "../../components/ModelSelectorModal";
 import ImageGalleryModal from "../../components/ImageGalleryModal";
 import { VAULT_ADDRESS } from "../../lib/constants";
 import { API_URL } from "../../config/api";
+import { fetchStream } from "../../lib/stream-polyfill";
 
 
 type Model = {
@@ -567,13 +570,24 @@ const SourceList = ({ sources, theme, webSearchType }: any) => {
 };
 
 const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal }: any) => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isMobile = width < 600;
   const sidebarWidth = isDesktop ? 280 : (isMobile ? Math.min(width * 0.85, 320) : 300);
   const slideAnim = useRef(new Animated.Value(isDesktop ? 0 : -sidebarWidth)).current;
   const [history, setHistory] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{id: string, title: string} | null>(null);
+  const [txHistoryVisible, setTxHistoryVisible] = useState(false);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loadingTx, setLoadingTx] = useState(false);
+  const [txTab, setTxTab] = useState<'deposits' | 'usage'>('deposits'); // Tab state for transaction history
+
+  // Debug: Log when transactions state changes
+  useEffect(() => {
+      console.log("[TxHistory] State updated - transactions count:", transactions.length);
+  }, [transactions]);
 
   useEffect(() => {
     if (isDesktop) { slideAnim.setValue(0); } else {
@@ -592,24 +606,122 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
       if (isOpen) loadHistory();
   }, [isOpen, user, guestId, token]);
 
-  const deleteConversation = async (id: string) => {
-      setDeletingId(id);
+  const confirmDelete = (item: {id: string, title: string}) => {
+      setItemToDelete(item);
+      setDeleteModalVisible(true);
+  };
+
+  const executeDelete = async () => {
+      if (!itemToDelete) return;
+      setDeletingId(itemToDelete.id);
+      setDeleteModalVisible(false);
       try {
-          await fetch(`${API_URL}/llm/conversations/${id}`, {
+          await fetch(`${API_URL}/llm/conversations/${itemToDelete.id}`, {
               method: 'DELETE',
               headers: getHeaders()
           });
-          setHistory(prev => prev.filter(h => h.id !== id));
+          setHistory(prev => prev.filter(h => h.id !== itemToDelete.id));
       } catch (e) {
           console.error("Failed to delete conversation", e);
       }
       setDeletingId(null);
+      setItemToDelete(null);
   };
 
   // Filter conversations by search query
   const filteredHistory = searchQuery
       ? history.filter(h => (h.title || "").toLowerCase().includes(searchQuery.toLowerCase()))
       : history;
+
+  // Load transaction history (deposits + usage)
+  const loadTransactions = async () => {
+      if (!user) {
+          console.log("[TxHistory] No user, skipping load");
+          return;
+      }
+      setLoadingTx(true);
+      try {
+          // Use address-specific endpoints instead of /billing/me to avoid auth issues
+          const walletAddress = user.walletAddress;
+          console.log("[TxHistory] Fetching for wallet:", walletAddress);
+
+          // Fetch deposits and usage in parallel
+          const [depositsRes, usageRes] = await Promise.all([
+              fetch(`${API_URL}/billing/deposits/${walletAddress}`, { headers: getHeaders() }),
+              fetch(`${API_URL}/billing/usage/${walletAddress}`, { headers: getHeaders() })
+          ]);
+
+          console.log("[TxHistory] Deposits response status:", depositsRes.status);
+          console.log("[TxHistory] Usage response status:", usageRes.status);
+
+          // Parse deposits
+          let depositsData: any[] = [];
+          if (depositsRes.ok) {
+              const depositsJson = await depositsRes.json();
+              console.log("[TxHistory] Deposits raw:", JSON.stringify(depositsJson, null, 2));
+              depositsData = depositsJson.deposits || [];
+          } else {
+              console.error("[TxHistory] Deposits fetch failed:", depositsRes.status);
+          }
+
+          // Parse usage
+          let usageData: any[] = [];
+          if (usageRes.ok) {
+              const usageJson = await usageRes.json();
+              console.log("[TxHistory] Usage raw:", JSON.stringify(usageJson, null, 2));
+              usageData = usageJson.usage || [];
+          } else {
+              console.error("[TxHistory] Usage fetch failed:", usageRes.status);
+          }
+
+          // Map deposits with full details
+          const deposits = depositsData.map((d: any) => ({
+              type: 'deposit' as const,
+              amountUSD: parseFloat(d.amountUSD || d.creditsUSD || d.amount || 0),
+              amountNative: d.amountNative || d.amountAVAX,
+              priceAtDeposit: d.priceAtDeposit,
+              txHash: d.txId || d.txHash,
+              timestamp: d.timestamp,
+              createdAt: d.timestamp ? new Date(d.timestamp * 1000).toISOString() : d.createdAt
+          }));
+
+          // Map usage with full details
+          const usage = usageData.map((u: any) => ({
+              type: 'usage' as const,
+              amountUSD: parseFloat(u.amountUSD || u.costUSD || 0),
+              model: u.model,
+              inputTokens: u.inputTokens,
+              outputTokens: u.outputTokens,
+              requestId: u.requestId,
+              timestamp: u.timestamp,
+              createdAt: u.timestamp ? new Date(u.timestamp * 1000).toISOString() : u.createdAt
+          }));
+
+          // Merge and sort by date (newest first)
+          const combined = [...deposits, ...usage].sort((a, b) => {
+              const dateA = new Date(a.createdAt || 0).getTime();
+              const dateB = new Date(b.createdAt || 0).getTime();
+              return dateB - dateA;
+          });
+
+          console.log("[TxHistory] Final combined:", combined.length, "transactions");
+          console.log("[TxHistory] Deposits:", deposits.length, "Usage:", usage.length);
+          setTransactions(combined);
+      } catch (e) {
+          console.error("[TxHistory] Failed to load:", e);
+      }
+      setLoadingTx(false);
+  };
+
+  const openTxExplorer = (txHash: string) => {
+      const url = `https://snowtrace.io/tx/${txHash}`;
+      Linking.openURL(url);
+  };
+
+  const openTxHistory = () => {
+      setTxHistoryVisible(true);
+      loadTransactions();
+  };
 
   // Hide sidebar when closed (both mobile and desktop)
   if (!isOpen) return null;
@@ -765,76 +877,516 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
             </View>
         </View>
 
+          {/* History Section Header */}
           <View style={[styles.sectionHeader, { marginTop: isMobile ? 8 : 0, paddingHorizontal: isMobile ? 12 : 20 }]}>
-              <Text style={[styles.sectionTitle, { color: theme.secondary, fontSize: isMobile ? 12 : 10 }]}>HISTORY_LOGS</Text>
-              <Text style={{color: theme.textMuted, fontSize: isMobile ? 11 : 9, fontFamily: FONT_MONO}}>{filteredHistory.length}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <MessageSquare size={isMobile ? 14 : 12} color={theme.primary} />
+                  <Text style={[styles.sectionTitle, { color: theme.secondary, fontSize: isMobile ? 12 : 10 }]}>HISTORY_LOGS</Text>
+              </View>
+              <View style={{
+                  backgroundColor: 'rgba(0, 255, 65, 0.15)',
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
+                  borderRadius: 10
+              }}>
+                  <Text style={{color: theme.primary, fontSize: isMobile ? 11 : 9, fontWeight: '600', fontFamily: FONT_MONO}}>{filteredHistory.length}</Text>
+              </View>
           </View>
 
-          {/* History List - flex to fill available space */}
-          <View style={{ paddingHorizontal: isMobile ? 12 : 16, flex: 1, minHeight: 150 }}>
-            {filteredHistory.length === 0 ? (
-              <Text style={{color: theme.secondary, padding: 20, fontSize: 10, fontFamily: FONT_MONO, textAlign: 'center'}}>
-                  {searchQuery ? "NO_MATCHES" : "NO_DATA"}
-              </Text>
-            ) : (
-              filteredHistory.slice(0, 20).map((item) => (
-                <View key={item.id} style={{
-                    flexDirection: 'row',
+          {/* History List - flex to fill space */}
+          <View style={{ paddingHorizontal: isMobile ? 12 : 16, flex: 1, paddingBottom: 16 }}>
+              {filteredHistory.length === 0 ? (
+                <View style={{
+                    padding: 20,
                     alignItems: 'center',
                     backgroundColor: 'rgba(255,255,255,0.02)',
-                    borderRadius: 8,
-                    marginBottom: 4
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.05)',
+                    borderStyle: 'dashed'
                 }}>
-                    <TouchableOpacity
-                        style={{
-                            flex: 1,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 10,
-                            paddingHorizontal: 10,
-                            paddingVertical: isMobile ? 12 : 10
-                        }}
-                        onPress={() => { router.push(`/chat/${item.id}`); if(!isDesktop) onClose(); }}
-                    >
-                        <MessageSquare size={14} color={theme.secondary} />
-                        <Text style={{color: theme.textMuted, fontSize: isMobile ? 12 : 12, fontFamily: FONT_MONO, flex: 1}} numberOfLines={1}>
-                            {item.title || "Untitled"}
-                        </Text>
-                    </TouchableOpacity>
-                    {/* Delete Button */}
-                    <TouchableOpacity
-                        onPress={() => deleteConversation(item.id)}
-                        style={{
-                            padding: 8,
-                            opacity: deletingId === item.id ? 0.5 : 0.6
-                        }}
-                        disabled={deletingId === item.id}
-                    >
-                        {deletingId === item.id ? (
-                            <ActivityIndicator size="small" color={theme.secondary} />
-                        ) : (
-                            <Trash2 size={14} color="#ff4444" />
-                        )}
-                    </TouchableOpacity>
+                    <MessageSquare size={20} color={theme.textMuted} style={{ marginBottom: 8 }} />
+                    <Text style={{color: theme.secondary, fontSize: 10, fontFamily: FONT_MONO, textAlign: 'center'}}>
+                        {searchQuery ? "NO_MATCHES" : "NO_CHATS_YET"}
+                    </Text>
                 </View>
-              ))
-            )}
-          </View>
-
-          {/* New Premium Wallet Section - Compact on mobile */}
-          <View style={{ paddingHorizontal: isMobile ? 12 : 16, paddingBottom: isMobile ? 12 : 16 }}>
-            <WalletSidebarSection
-              user={user}
-              theme={theme}
-              isConnecting={isConnecting}
-              isAuthenticating={isAuthenticating}
-              onConnectWallet={connectWallet}
-              onLogout={logout}
-              currentBalance={currentBalance}
-              onAddCredits={() => { onOpenDepositModal(); if(!isDesktop) onClose(); }}
-            />
+              ) : (
+                filteredHistory.map((item, index) => (
+                  <View key={item.id} style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: index % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent',
+                      borderRadius: 6,
+                      marginBottom: 1
+                  }}>
+                      <TouchableOpacity
+                          style={{
+                              flex: 1,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 8,
+                              paddingHorizontal: 8,
+                              paddingVertical: isMobile ? 10 : 8
+                          }}
+                          onPress={() => { router.push(`/chat/${item.id}`); if(!isDesktop) onClose(); }}
+                      >
+                          <MessageSquare size={12} color={theme.primary} />
+                          <Text style={{color: theme.text, fontSize: isMobile ? 11 : 10, fontFamily: FONT_MONO, flex: 1}} numberOfLines={1}>
+                              {item.title || "Untitled"}
+                          </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                          onPress={() => confirmDelete({ id: item.id, title: item.title || "Untitled" })}
+                          style={{ padding: 6 }}
+                          disabled={deletingId === item.id}
+                      >
+                          {deletingId === item.id ? (
+                              <ActivityIndicator size="small" color="#ff4444" />
+                          ) : (
+                              <Trash2 size={12} color="#ff4444" />
+                          )}
+                      </TouchableOpacity>
+                  </View>
+                ))
+              )}
           </View>
         </ScrollView>
+
+        {/* STICKY Wallet Section - Always visible at bottom */}
+        <View style={{
+            paddingHorizontal: isMobile ? 12 : 16,
+            paddingBottom: isMobile ? 12 : 12,
+            paddingTop: 10,
+            borderTopWidth: 1,
+            borderTopColor: 'rgba(255,255,255,0.08)',
+            backgroundColor: '#0a0a0a'
+        }}>
+          <WalletSidebarSection
+            user={user}
+            theme={theme}
+            isConnecting={isConnecting}
+            isAuthenticating={isAuthenticating}
+            onConnectWallet={connectWallet}
+            onLogout={logout}
+            currentBalance={currentBalance}
+            onAddCredits={() => { onOpenDepositModal(); if(!isDesktop) onClose(); }}
+          />
+          {/* Transaction History Button */}
+          {user && (
+            <TouchableOpacity
+                onPress={openTxHistory}
+                style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    marginTop: 8,
+                    paddingVertical: 8,
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: 'rgba(139, 92, 246, 0.3)'
+                }}
+            >
+                <CreditCard size={14} color="#8B5CF6" />
+                <Text style={{ color: '#8B5CF6', fontSize: 11, fontWeight: '600', fontFamily: FONT_MONO }}>
+                    Transaction History
+                </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Delete Confirmation Modal */}
+        <Modal
+            visible={deleteModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setDeleteModalVisible(false)}
+        >
+            <View style={{
+                flex: 1,
+                backgroundColor: 'rgba(0,0,0,0.85)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: 24
+            }}>
+                <View style={{
+                    backgroundColor: '#1a1a1a',
+                    borderRadius: 20,
+                    padding: 24,
+                    width: '100%',
+                    maxWidth: 320,
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,68,68,0.3)'
+                }}>
+                    {/* Icon */}
+                    <View style={{
+                        width: 60,
+                        height: 60,
+                        borderRadius: 30,
+                        backgroundColor: 'rgba(255, 68, 68, 0.15)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        alignSelf: 'center',
+                        marginBottom: 16
+                    }}>
+                        <Trash2 size={28} color="#ff4444" />
+                    </View>
+
+                    {/* Title */}
+                    <Text style={{
+                        color: '#fff',
+                        fontSize: 18,
+                        fontWeight: '700',
+                        textAlign: 'center',
+                        marginBottom: 8
+                    }}>
+                        Delete Conversation?
+                    </Text>
+
+                    {/* Message */}
+                    <Text style={{
+                        color: 'rgba(255,255,255,0.6)',
+                        fontSize: 14,
+                        textAlign: 'center',
+                        marginBottom: 8,
+                        lineHeight: 20
+                    }}>
+                        This action cannot be undone. The conversation will be permanently deleted.
+                    </Text>
+
+                    {/* Chat title */}
+                    <View style={{
+                        backgroundColor: 'rgba(255,255,255,0.05)',
+                        borderRadius: 8,
+                        padding: 12,
+                        marginBottom: 20
+                    }}>
+                        <Text style={{
+                            color: theme.primary,
+                            fontSize: 12,
+                            fontFamily: FONT_MONO,
+                            textAlign: 'center'
+                        }} numberOfLines={2}>
+                            "{itemToDelete?.title || 'Untitled'}"
+                        </Text>
+                    </View>
+
+                    {/* Buttons */}
+                    <View style={{ flexDirection: 'row', gap: 12 }}>
+                        <TouchableOpacity
+                            onPress={() => setDeleteModalVisible(false)}
+                            style={{
+                                flex: 1,
+                                paddingVertical: 14,
+                                borderRadius: 12,
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                                alignItems: 'center'
+                            }}
+                        >
+                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={executeDelete}
+                            style={{
+                                flex: 1,
+                                paddingVertical: 14,
+                                borderRadius: 12,
+                                backgroundColor: '#ff4444',
+                                alignItems: 'center',
+                                flexDirection: 'row',
+                                justifyContent: 'center',
+                                gap: 6
+                            }}
+                        >
+                            <Trash2 size={16} color="#fff" />
+                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>Delete</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        </Modal>
+
+        {/* Transaction History Modal - Detailed View */}
+        <Modal
+            visible={txHistoryVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setTxHistoryVisible(false)}
+        >
+            <View style={{
+                flex: 1,
+                backgroundColor: 'rgba(0,0,0,0.95)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: 12
+            }}>
+                <View style={{
+                    backgroundColor: '#0d0d0d',
+                    borderRadius: 20,
+                    width: '100%',
+                    maxWidth: 420,
+                    height: height * 0.8,
+                    borderWidth: 1,
+                    borderColor: 'rgba(139, 92, 246, 0.4)',
+                    overflow: 'hidden'
+                }}>
+                    {/* Header */}
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 16,
+                        borderBottomWidth: 1,
+                        borderBottomColor: 'rgba(255,255,255,0.08)'
+                    }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <View style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 12,
+                                backgroundColor: 'rgba(139, 92, 246, 0.2)',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <CreditCard size={20} color="#8B5CF6" />
+                            </View>
+                            <View>
+                                <Text style={{ color: '#fff', fontSize: 17, fontWeight: '700' }}>
+                                    Transaction History
+                                </Text>
+                                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: FONT_MONO }}>
+                                    Deposits & AI Usage
+                                </Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => setTxHistoryVisible(false)}
+                            style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 17,
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >
+                            <X size={18} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Balance Card */}
+                    <View style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' }}>
+                        <View style={{
+                            backgroundColor: 'rgba(0, 255, 65, 0.1)',
+                            borderRadius: 12,
+                            padding: 14,
+                            borderWidth: 1,
+                            borderColor: 'rgba(0, 255, 65, 0.2)',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}>
+                            <View>
+                                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10, fontFamily: FONT_MONO, marginBottom: 2 }}>CURRENT BALANCE</Text>
+                                <Text style={{ color: theme.primary, fontSize: 24, fontWeight: '800', fontFamily: FONT_MONO }}>
+                                    ${(currentBalance || 0).toFixed(4)}
+                                </Text>
+                            </View>
+                            <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>
+                                    {transactions.filter(t => t.type === 'deposit').length} deposits
+                                </Text>
+                                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9 }}>
+                                    {transactions.filter(t => t.type === 'usage').length} API calls
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Tab Buttons */}
+                    <View style={{ flexDirection: 'row', padding: 12, gap: 8 }}>
+                        <TouchableOpacity
+                            onPress={() => setTxTab('deposits')}
+                            style={{
+                                flex: 1,
+                                paddingVertical: 12,
+                                borderRadius: 10,
+                                backgroundColor: txTab === 'deposits' ? '#00FF41' : 'rgba(255,255,255,0.08)',
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: txTab === 'deposits' ? '#00FF41' : 'rgba(255,255,255,0.1)'
+                            }}
+                        >
+                            <Text style={{
+                                color: txTab === 'deposits' ? '#000' : '#fff',
+                                fontSize: 13,
+                                fontWeight: '700'
+                            }}>
+                                💰 Deposits ({transactions.filter(t => t.type === 'deposit').length})
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={() => setTxTab('usage')}
+                            style={{
+                                flex: 1,
+                                paddingVertical: 12,
+                                borderRadius: 10,
+                                backgroundColor: txTab === 'usage' ? '#8B5CF6' : 'rgba(255,255,255,0.08)',
+                                alignItems: 'center',
+                                borderWidth: 1,
+                                borderColor: txTab === 'usage' ? '#8B5CF6' : 'rgba(255,255,255,0.1)'
+                            }}
+                        >
+                            <Text style={{
+                                color: txTab === 'usage' ? '#fff' : '#fff',
+                                fontSize: 13,
+                                fontWeight: '700'
+                            }}>
+                                🤖 AI Usage ({transactions.filter(t => t.type === 'usage').length})
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Transaction List - Filtered by Tab */}
+                    <ScrollView
+                        style={{ flex: 1 }}
+                        contentContainerStyle={{ paddingBottom: 16 }}
+                        showsVerticalScrollIndicator={true}
+                    >
+                        {(() => {
+                            const filteredTx = transactions.filter(t =>
+                                txTab === 'deposits' ? t.type === 'deposit' : t.type === 'usage'
+                            );
+
+                            if (loadingTx) {
+                                return (
+                                    <View style={{ padding: 40, alignItems: 'center' }}>
+                                        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Loading...</Text>
+                                    </View>
+                                );
+                            }
+
+                            if (filteredTx.length === 0) {
+                                return (
+                                    <View style={{ padding: 40, alignItems: 'center' }}>
+                                        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>
+                                            {txTab === 'deposits' ? 'No deposits yet' : 'No AI usage yet'}
+                                        </Text>
+                                    </View>
+                                );
+                            }
+
+                            return filteredTx.map((tx: any, idx: number) => (
+                                <View key={`tx-${txTab}-${idx}`} style={{
+                                    padding: 12,
+                                    marginHorizontal: 8,
+                                    marginVertical: 4,
+                                    backgroundColor: tx.type === 'deposit' ? 'rgba(0,255,65,0.08)' : 'rgba(139,92,246,0.08)',
+                                    borderRadius: 10,
+                                    borderLeftWidth: 3,
+                                    borderLeftColor: tx.type === 'deposit' ? '#00FF41' : '#8B5CF6'
+                                }}>
+                                    {tx.type === 'deposit' ? (
+                                        /* Deposit Item */
+                                        <>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                                                <Text style={{ color: '#00FF41', fontSize: 16, fontWeight: '800', fontFamily: FONT_MONO }}>
+                                                    +${(tx.amountUSD || 0).toFixed(4)}
+                                                </Text>
+                                                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>
+                                                    {tx.amountNative ? `${parseFloat(tx.amountNative).toFixed(4)} AVAX` : ''}
+                                                </Text>
+                                            </View>
+                                            {tx.txHash && (
+                                                <TouchableOpacity
+                                                    onPress={() => openTxExplorer(tx.txHash)}
+                                                    style={{
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        gap: 6,
+                                                        backgroundColor: 'rgba(139,92,246,0.15)',
+                                                        paddingVertical: 6,
+                                                        paddingHorizontal: 10,
+                                                        borderRadius: 6,
+                                                        alignSelf: 'flex-start',
+                                                        marginTop: 4
+                                                    }}
+                                                >
+                                                    <Text style={{ color: '#8B5CF6', fontSize: 11, fontFamily: FONT_MONO }}>
+                                                        🔗 {tx.txHash.slice(0, 8)}...{tx.txHash.slice(-6)}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            )}
+                                            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, marginTop: 8, fontFamily: FONT_MONO }}>
+                                                {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : 'No date'}
+                                            </Text>
+                                        </>
+                                    ) : (
+                                        /* AI Usage Item */
+                                        <>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                                                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                                                    {tx.model?.split('/').pop() || 'Unknown Model'}
+                                                </Text>
+                                                <Text style={{ color: '#ff6b6b', fontSize: 13, fontWeight: '700', fontFamily: FONT_MONO }}>
+                                                    -${(tx.amountUSD || 0).toFixed(6)}
+                                                </Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                                                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>
+                                                    📥 {tx.inputTokens || 0} tokens
+                                                </Text>
+                                                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>
+                                                    📤 {tx.outputTokens || 0} tokens
+                                                </Text>
+                                            </View>
+                                            <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, marginTop: 6, fontFamily: FONT_MONO }}>
+                                                {tx.createdAt ? new Date(tx.createdAt).toLocaleString() : 'No date'}
+                                            </Text>
+                                        </>
+                                    )}
+                                </View>
+                            ));
+                        })()}
+                    </ScrollView>
+
+                    {/* Footer with Add Credits */}
+                    <View style={{
+                        padding: 14,
+                        borderTopWidth: 1,
+                        borderTopColor: 'rgba(255,255,255,0.08)',
+                        backgroundColor: 'rgba(0,0,0,0.3)'
+                    }}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                setTxHistoryVisible(false);
+                                setTimeout(() => {
+                                    if (onOpenDepositModal) {
+                                        onOpenDepositModal();
+                                    }
+                                }, 350);
+                            }}
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 8,
+                                paddingVertical: 14,
+                                backgroundColor: theme.primary,
+                                borderRadius: 12
+                            }}
+                        >
+                            <Wallet size={18} color="#000" />
+                            <Text style={{ color: '#000', fontSize: 14, fontWeight: '700' }}>Add Credits</Text>
+                        </TouchableOpacity>
+                        <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, textAlign: 'center', marginTop: 8 }}>
+                            Powered by Avalanche C-Chain
+                        </Text>
+                    </View>
+                </View>
+            </View>
+        </Modal>
       </SafeAreaView>
     </Animated.View>
   );
@@ -1209,8 +1761,10 @@ const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
         if (currentIndex > 0) {
             // Look backwards for the most recent user message
             for (let i = currentIndex - 1; i >= 0; i--) {
-                if (allMessages[i].role === 'user') {
-                    return allMessages[i].content;
+                const msg = allMessages[i];
+                if (msg.role === 'user') {
+                    // User message content could be in 'content' or 'text' field
+                    return msg.content || msg.text || null;
                 }
             }
         }
@@ -1272,7 +1826,10 @@ const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
 
     // Export all responses as formatted text
     const exportAllResponses = useCallback(() => {
-        if (!item.responses || item.responses.length === 0) return;
+        if (!item.responses || item.responses.length === 0) {
+            Alert.alert('No responses', 'No responses to export yet.');
+            return;
+        }
 
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         let content = `# ZeroPrompt AI Comparison Results\n`;
@@ -1286,6 +1843,11 @@ const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
             content += `-`.repeat(40) + `\n\n`;
             content += userPrompt;
             content += `\n\n${'='.repeat(60)}\n\n`;
+        } else {
+            content += `## 📝 USER PROMPT\n`;
+            content += `-`.repeat(40) + `\n\n`;
+            content += `[Prompt not found]\n`;
+            content += `\n${'='.repeat(60)}\n\n`;
         }
 
         content += `## 🤖 AI RESPONSES\n\n`;
@@ -1314,7 +1876,7 @@ const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
 
         content += `\n---\nExported from ZeroPrompt (https://zeroprompt.app)\n`;
 
-        // Copy to clipboard and optionally download
+        // Copy to clipboard and optionally download/share
         if (Platform.OS === 'web') {
             navigator.clipboard.writeText(content);
             // Also trigger download
@@ -1327,6 +1889,15 @@ const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        } else {
+            // Mobile: Copy to clipboard and show share sheet
+            Clipboard.setString(content);
+            Share.share({
+                message: content,
+                title: 'ZeroPrompt AI Comparison'
+            }).catch(() => {
+                Alert.alert('Copied!', 'Comparison results copied to clipboard.');
+            });
         }
     }, [item.responses, userPrompt]);
 
@@ -1931,42 +2502,56 @@ const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
                         borderColor: 'rgba(255,255,255,0.08)',
                         overflow: 'hidden'
                     }}>
-                        {/* Mobile Content Header */}
+                        {/* Mobile Content Header - Simplified */}
                         <View style={{
                             flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            padding: 12,
+                            padding: 10,
                             borderBottomWidth: 1,
                             borderBottomColor: 'rgba(255,255,255,0.06)',
                             backgroundColor: 'rgba(0,0,0,0.15)'
                         }}>
-                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1}}>
-                                <ModelLogo modelId={activeRes?.modelName} size={22} theme={theme} />
-                                <Text style={{color: theme.secondary, fontSize: 11, fontFamily: FONT_MONO}} numberOfLines={1}>
+                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0}}>
+                                <ModelLogo modelId={activeRes?.modelName} size={20} theme={theme} />
+                                <Text style={{color: theme.secondary, fontSize: 11, fontFamily: FONT_MONO, flex: 1}} numberOfLines={1}>
                                     {activeRes?.modelName?.split('/').pop() || 'Model'}
                                 </Text>
-                                {/* Cost Badge in Mobile Header */}
+                            </View>
+                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0}}>
+                                {/* Cost Badge */}
                                 {activeRes?.billing?.costUSD && activeRes?.status === 'done' && (
                                     <View style={{
                                         backgroundColor: 'rgba(0, 255, 65, 0.15)',
-                                        paddingHorizontal: 6,
+                                        paddingHorizontal: 5,
                                         paddingVertical: 2,
                                         borderRadius: 4,
                                         flexDirection: 'row',
                                         alignItems: 'center',
-                                        gap: 3
+                                        gap: 2
                                     }}>
-                                        <DollarSign size={10} color={theme.primary} />
-                                        <Text style={{color: theme.primary, fontSize: 10, fontWeight: '600', fontFamily: FONT_MONO}}>
-                                            {parseFloat(activeRes.billing.costUSD).toFixed(6)}
+                                        <DollarSign size={9} color={theme.primary} />
+                                        <Text style={{color: theme.primary, fontSize: 9, fontWeight: '600', fontFamily: FONT_MONO}}>
+                                            {parseFloat(activeRes.billing.costUSD).toFixed(4)}
                                         </Text>
                                     </View>
                                 )}
+                                {/* Export Button - Compact */}
+                                <TouchableOpacity
+                                    onPress={exportAllResponses}
+                                    style={{
+                                        padding: 6,
+                                        backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                                        borderRadius: 6,
+                                    }}
+                                >
+                                    <Download size={14} color="#8B5CF6" />
+                                </TouchableOpacity>
+                                {/* Copy Button */}
+                                {activeRes?.content && (
+                                    <CopyButton content={activeRes.content} theme={theme} size={14} />
+                                )}
                             </View>
-                            {activeRes?.content && (
-                                <CopyButton content={activeRes.content} theme={theme} size={14} />
-                            )}
                         </View>
                         <View style={{padding: 14}}>
                             <ResponseContent
@@ -2069,9 +2654,10 @@ export default function ChatScreen() {
   const { theme, setThemeId } = useTheme();
   const {
     user, token, guestId, getHeaders,
-    isConnecting, isAuthenticating, connectionError,
+    isConnecting, isAuthenticating, isWaitingForConnection, connectionError,
     migratedChats, clearMigratedChats,
-    openWalletModal, connectWallet, refreshUser, logout
+    openWalletModal, connectWallet, refreshUser, logout,
+    nativeProvider
   } = useAuth();
   const {
     currentBalance, currencySymbol, nativePrice,
@@ -2427,111 +3013,113 @@ export default function ChatScreen() {
   const streamModelResponse = async (model: Model, payload: any[], comparisonId: string, overrideConversationId: string | null) => {
       updateResponse(comparisonId, model.openrouterId, { status: 'streaming' });
       try {
-          // For native platforms, use non-streaming endpoint since ReadableStream isn't supported
           const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
-          const endpoint = isNative ? `${API_URL}/llm/chat` : `${API_URL}/llm/chat/stream`;
+          
+          // Use streaming endpoint for ALL platforms now
+          const endpoint = `${API_URL}/llm/chat/stream`;
 
-          const res = await fetch(endpoint, {
-              method: "POST",
-              headers: getHeaders(),
-              body: JSON.stringify({
-                  messages: payload,
-                  model: model.openrouterId,
-                  conversationId: overrideConversationId || conversationId,
-                  webSearch: webSearchEnabled
-              })
-          });
-
-          // For native platforms, handle non-streaming response
-          if (isNative) {
-              const data = await res.json();
-              if (!res.ok) {
-                  throw new Error(data.error || 'Request failed');
-              }
-              if (data.conversationId && data.conversationId !== conversationId) {
-                  setConversationId(data.conversationId);
-                  router.setParams({ id: data.conversationId });
-              }
-              // Map response fields - non-streaming uses 'reply', streaming uses 'content'
-              updateResponse(comparisonId, model.openrouterId, {
-                  content: data.reply || data.content || data.choices?.[0]?.message?.content || '',
-                  reasoning: data.reasoning || '',
-                  sources: data.sources || [],
-                  webSearchType: data.webSearchType || null,
-                  attachmentUrl: data.attachmentUrl,
-                  attachmentType: data.attachmentType,
-                  generatedImages: data.generatedImages || [],
-                  billing: data.billing,
-                  status: 'done'
-              });
-              if (data.billing) refreshBilling();
-              return;
-          }
-
-          // For web, use streaming
-          const reader = res.body?.getReader();
-          const decoder = new TextDecoder();
-          if (!reader) throw new Error("No reader");
+          // Shared stream processor
           let currentContent = ""; let currentReasoning = ""; let currentSources: string[] = [];
           let currentAttachmentUrl: string | undefined = undefined;
           let currentAttachmentType: string | undefined = undefined;
           let currentWebSearchType: 'native' | 'exa' | null = null;
           let generatedImages: string[] = [];
+          let buffer = ""; // Buffer for incomplete chunks
 
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split("\n\n");
-            for (const line of lines) {
-                const cleanLine = line.replace("data: ", "").trim();
-                if (!cleanLine || cleanLine === "[DONE]") continue;
-                try {
-                    const parsed = JSON.parse(cleanLine);
-                    if (parsed.conversationId && parsed.conversationId !== conversationId) {
-                        setConversationId(parsed.conversationId);
-                        router.setParams({ id: parsed.conversationId });
-                    }
-                    // Capture web search type
-                    if (parsed.webSearchType) {
-                        currentWebSearchType = parsed.webSearchType;
-                        updateResponse(comparisonId, model.openrouterId, { webSearchType: currentWebSearchType });
-                    }
-                    if (parsed.reasoning) currentReasoning += parsed.reasoning;
-                    if (parsed.sources) {
-                        currentSources = [...currentSources, ...parsed.sources];
-                        updateResponse(comparisonId, model.openrouterId, { sources: currentSources });
-                    }
-                    if (parsed.attachmentUrl) {
-                        currentAttachmentUrl = parsed.attachmentUrl;
-                        currentAttachmentType = parsed.attachmentType;
-                        updateResponse(comparisonId, model.openrouterId, { attachmentUrl: currentAttachmentUrl, attachmentType: currentAttachmentType });
-                    }
-                    // Capture generated images from image generation models
-                    if (parsed.generatedImage) {
-                        generatedImages.push(parsed.generatedImage);
-                        updateResponse(comparisonId, model.openrouterId, { generatedImages: [...generatedImages] });
-                    }
-                    // Capture billing data from stream and refresh balance
-                    if (parsed.billing) {
-                        updateResponse(comparisonId, model.openrouterId, { billing: parsed.billing });
-                        // Refresh billing balance after message completes
-                        refreshBilling();
-                    }
+          const processChunk = (chunk: string) => {
+              buffer += chunk;
+              const lines = buffer.split("\n\n");
+              // Keep the last line if it might be incomplete (doesn't end with \n\n)
+              // However, split separates by the delimiter. If the stream ended in the middle of a chunk, 
+              // the last element is the incomplete part.
+              // We need to check if the chunk ended with \n\n. 
+              // Easier approach for SSE: split, process complete ones, put remainder back in buffer.
+              
+              buffer = lines.pop() || ""; // The last element is potentially incomplete
 
-                    const delta = parsed.choices?.[0]?.delta?.content || "";
-                    if (delta) currentContent += delta;
+              for (const line of lines) {
+                  const cleanLine = line.replace("data: ", "").trim();
+                  if (!cleanLine || cleanLine === "[DONE]") continue;
+                  try {
+                      const parsed = JSON.parse(cleanLine);
+                      if (parsed.conversationId && parsed.conversationId !== conversationId) {
+                          setConversationId(parsed.conversationId);
+                          router.setParams({ id: parsed.conversationId });
+                      }
+                      if (parsed.webSearchType) {
+                          currentWebSearchType = parsed.webSearchType;
+                          updateResponse(comparisonId, model.openrouterId, { webSearchType: currentWebSearchType });
+                      }
+                      if (parsed.reasoning) currentReasoning += parsed.reasoning;
+                      if (parsed.sources) {
+                          currentSources = [...currentSources, ...parsed.sources];
+                          updateResponse(comparisonId, model.openrouterId, { sources: currentSources });
+                      }
+                      if (parsed.attachmentUrl) {
+                          currentAttachmentUrl = parsed.attachmentUrl;
+                          currentAttachmentType = parsed.attachmentType;
+                          updateResponse(comparisonId, model.openrouterId, { attachmentUrl: currentAttachmentUrl, attachmentType: currentAttachmentType });
+                      }
+                      if (parsed.generatedImage) {
+                          generatedImages.push(parsed.generatedImage);
+                          updateResponse(comparisonId, model.openrouterId, { generatedImages: [...generatedImages] });
+                      }
+                      if (parsed.billing) {
+                          updateResponse(comparisonId, model.openrouterId, { billing: parsed.billing });
+                          refreshBilling();
+                      }
 
-                    if (delta || parsed.reasoning || parsed.attachmentUrl) {
-                        updateResponse(comparisonId, model.openrouterId, {
-                            content: currentContent,
-                            reasoning: currentReasoning,
-                            ...(currentAttachmentUrl && { attachmentUrl: currentAttachmentUrl }),
-                            ...(currentAttachmentType && { attachmentType: currentAttachmentType })
-                        });
-                    }
-                } catch (e) {}
-            }
+                      const delta = parsed.choices?.[0]?.delta?.content || "";
+                      if (delta) currentContent += delta;
+
+                      if (delta || parsed.reasoning || parsed.attachmentUrl) {
+                          updateResponse(comparisonId, model.openrouterId, {
+                              content: currentContent,
+                              reasoning: currentReasoning,
+                              ...(currentAttachmentUrl && { attachmentUrl: currentAttachmentUrl }),
+                              ...(currentAttachmentType && { attachmentType: currentAttachmentType })
+                          });
+                      }
+                  } catch (e) {}
+              }
+          };
+
+          if (isNative) {
+              await fetchStream(endpoint, {
+                  method: "POST",
+                  headers: getHeaders(),
+                  body: JSON.stringify({
+                      messages: payload,
+                      model: model.openrouterId,
+                      conversationId: overrideConversationId || conversationId,
+                      webSearch: webSearchEnabled
+                  })
+              }, (chunk) => {
+                  processChunk(chunk);
+              });
+          } else {
+              // Web implementation
+              const res = await fetch(endpoint, {
+                  method: "POST",
+                  headers: getHeaders(),
+                  body: JSON.stringify({
+                      messages: payload,
+                      model: model.openrouterId,
+                      conversationId: overrideConversationId || conversationId,
+                      webSearch: webSearchEnabled
+                  })
+              });
+              
+              const reader = res.body?.getReader();
+              const decoder = new TextDecoder();
+              if (!reader) throw new Error("No reader");
+
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                processChunk(chunk);
+              }
           }
           updateResponse(comparisonId, model.openrouterId, { status: 'done' });
       } catch (err) {
@@ -2540,15 +3128,77 @@ export default function ChatScreen() {
       }
   };
 
-  const updateResponse = (msgId: string, modelId: string, updates: any) => {
+  // Throttled update system to prevent UI blocking during streaming
+  const pendingUpdates = useRef<Map<string, { msgId: string; modelId: string; updates: any }>>(new Map());
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastUpdateTime = useRef<number>(0);
+  const UPDATE_INTERVAL = 80; // Update UI at most every 80ms
+
+  const flushUpdates = useCallback(() => {
+      if (pendingUpdates.current.size === 0) return;
+
+      const updates = new Map(pendingUpdates.current);
+      pendingUpdates.current.clear();
+
       setMessages(prev => {
-          const idx = prev.findIndex(m => m.id === msgId);
-          if (idx === -1) return prev;
-          const msg = { ...prev[idx] };
-          if (msg.responses) msg.responses = msg.responses.map(r => r.modelId === modelId ? { ...r, ...updates } : r);
-          const newArr = [...prev]; newArr[idx] = msg; return newArr;
+          let newMessages = [...prev];
+          updates.forEach(({ msgId, modelId, updates: upd }) => {
+              const idx = newMessages.findIndex(m => m.id === msgId);
+              if (idx === -1) return;
+              const msg = { ...newMessages[idx] };
+              if (msg.responses) {
+                  msg.responses = msg.responses.map(r =>
+                      r.modelId === modelId ? { ...r, ...upd } : r
+                  );
+              }
+              newMessages[idx] = msg;
+          });
+          return newMessages;
       });
-  };
+
+      lastUpdateTime.current = Date.now();
+  }, []);
+
+  const updateResponse = useCallback((msgId: string, modelId: string, updates: any) => {
+      const key = `${msgId}-${modelId}`;
+      const existing = pendingUpdates.current.get(key);
+
+      // Merge updates
+      pendingUpdates.current.set(key, {
+          msgId,
+          modelId,
+          updates: existing ? { ...existing.updates, ...updates } : updates
+      });
+
+      // For status changes (done/error), flush immediately
+      if (updates.status === 'done' || updates.status === 'error') {
+          if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+              updateTimeoutRef.current = null;
+          }
+          flushUpdates();
+          return;
+      }
+
+      // Throttle content updates
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastUpdateTime.current;
+
+      if (timeSinceLastUpdate >= UPDATE_INTERVAL) {
+          // Enough time passed, update now
+          if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+              updateTimeoutRef.current = null;
+          }
+          flushUpdates();
+      } else if (!updateTimeoutRef.current) {
+          // Schedule update for later
+          updateTimeoutRef.current = setTimeout(() => {
+              updateTimeoutRef.current = null;
+              flushUpdates();
+          }, UPDATE_INTERVAL - timeSinceLastUpdate);
+      }
+  }, [flushUpdates]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -3007,7 +3657,7 @@ export default function ChatScreen() {
         onDeposit={executeDeposit}
         theme={theme}
         isWalletConnected={!!user?.walletAddress}
-        currentBalance={currentBalance.toFixed(6)}
+        currentBalance={(currentBalance || 0).toFixed(6)}
         nativePrice={nativePrice}
         currencySymbol={currencySymbol}
         isDepositing={isDepositing}
@@ -3026,6 +3676,13 @@ export default function ChatScreen() {
         onSuccess={(txHash) => {
           console.log('[DepositModal] Success:', txHash);
         }}
+        // Native wallet data
+        walletAddress={user?.walletAddress}
+        isWalletConnected={!!user?.walletAddress}
+        onConnectWallet={openWalletModal}
+        nativeProvider={nativeProvider}
+        connectionError={connectionError}
+        isWaitingForConnection={isWaitingForConnection}
       />
 
       {/* Wallet Connection Modal - Shows during wallet connection/signing */}

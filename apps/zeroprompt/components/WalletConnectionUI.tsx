@@ -114,8 +114,8 @@ const AnimatedWalletIcon = ({ size = 64, theme, isActive }: { size?: number; the
       ).start();
       Animated.loop(
         Animated.sequence([
-          Animated.timing(scaleAnim, { toValue: 1.05, duration: 800, useNativeDriver: true }),
-          Animated.timing(scaleAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+          Animated.timing(scaleAnim, { toValue: 1.05, duration: 800, useNativeDriver: false }),
+          Animated.timing(scaleAnim, { toValue: 1, duration: 800, useNativeDriver: false })
         ])
       ).start();
     }
@@ -513,7 +513,7 @@ export const WalletSidebarSection = ({
           </View>
         </View>
         <View style={[styles.creditButtonsRow, { marginTop: isMobile ? 8 : 10 }]}>
-          <TouchableOpacity style={[styles.addCreditsBtn, { backgroundColor: theme.primary + '15', flex: 1, paddingVertical: isMobile ? 6 : 8 }]} onPress={onAddCredits}>
+          <TouchableOpacity style={[styles.addCreditsBtn, { backgroundColor: theme.primary + '15', flex: 1, paddingVertical: isMobile ? 6 : 8 }]} onPress={() => { console.log("[AddCredits] Button pressed! Calling onAddCredits..."); onAddCredits(); }}>
             <Wallet size={isMobile ? 10 : 12} color={theme.primary} />
             <Text style={[styles.addCreditsText, { color: theme.primary, fontSize: isMobile ? 9 : 10 }]}>ADD CREDITS</Text>
           </TouchableOpacity>

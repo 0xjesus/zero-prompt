@@ -129,8 +129,10 @@ export const BillingProvider = ({ children }: { children: React.ReactNode }) => 
 
   // Open deposit modal
   const openDepositModal = useCallback((requiredAmount?: string) => {
+    console.log("[Billing] openDepositModal called, requiredAmount:", requiredAmount);
     setRequiredCredits(requiredAmount || null);
     setShowDepositModal(true);
+    console.log("[Billing] showDepositModal set to true");
   }, []);
 
   // Close deposit modal

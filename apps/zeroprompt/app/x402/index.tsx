@@ -184,10 +184,12 @@ export default function ProtocolPage() {
     openWalletModal,
     isConnecting,
     isAuthenticating,
+    isWaitingForConnection,
     connectionError,
     migratedChats,
     clearMigratedChats,
-    logout
+    logout,
+    nativeProvider
   } = useAuth();
 
   // Payment method: 'usdc' or 'native'
@@ -1036,7 +1038,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
           ) : (
             <TouchableOpacity
               style={[styles.connectBtn, isMobile && styles.connectBtnMobile]}
-              onPress={openWalletModal}
+              onPress={() => openWalletModal()}
               disabled={isConnecting || isAuthenticating}
             >
               {isConnecting || isAuthenticating ? (
@@ -1460,7 +1462,7 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
               )}
 
               {!isConnected && (
-                <TouchableOpacity onPress={openWalletModal} style={styles.walletWarningBtn}>
+                <TouchableOpacity onPress={() => openWalletModal()} style={styles.walletWarningBtn}>
                   <Wallet size={16} color="#FFC107" />
                   <Text style={styles.walletWarning}>
                     Connect wallet to test the x402 payment flow
@@ -1712,6 +1714,13 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         onSuccess={(txHash) => {
           console.log('Deposit success:', txHash);
         }}
+        // Native wallet data
+        walletAddress={address}
+        isWalletConnected={isConnected}
+        onConnectWallet={openWalletModal}
+        nativeProvider={nativeProvider}
+        connectionError={connectionError}
+        isWaitingForConnection={isWaitingForConnection}
       />
 
       {/* Wallet Connection Modal - Same as /chat */}

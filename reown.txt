@@ -1,0 +1,1438 @@
+Installation
+
+Open in ChatGPT
+
+AppKit for React Native enables seamless integration with multiple blockchain ecosystems, including EVM chains (like Ethereum, Polygon, etc.), Solana, and Bitcoin. It provides a unified API to manage wallet connections, interact with different chains, and build rich multi-chain applications.
+At the core of AppKit is a centralized AppKit instance that handles connection logic, manages various chain adapters, and provides data to your application via a React Context.
+Don’t have a project ID?
+Head over to Reown Dashboard and create a new project now!
+Get started
+​
+Installation
+​
+AppKit CLI
+Get started quickly with our dedicated CLI that sets up a minimal AppKit configuration for you.
+Run the command below and select React Native:
+npx @reown/appkit-cli
+​
+Add AppKit to your existing project
+Installation is a two-step process:
+Install the core AppKit library.
+Install the specific chain adapters you need for your application.
+Expo
+React Native CLI
+​
+Core Library
+npx expo install @reown/appkit-react-native @react-native-async-storage/async-storage react-native-get-random-values react-native-svg @react-native-community/netinfo @walletconnect/react-native-compat react-native-safe-area-context expo-application
+​
+Create babel.config.js
+For Expo SDK 53 and later, you need to create a babel.config.js file in your project root to properly support the valtio library:
+module.exports = function (api) {
+  api.cache(true);
+  return {
+    presets: [["babel-preset-expo", { unstable_transformImportMeta: true }]],
+  };
+};
+This configuration enables the unstable_transformImportMeta option which is required for valtio to work correctly with Expo 53+.
+​
+Chain Adapters
+For React Native CLI projects, use npm install ... or yarn add ....
+Install the adapters for the chains you intend to support:
+EVM
+Solana
+Bitcoin
+For EVM-compatible chains, you can choose between the Ethers.js-based adapter or the Wagmi-based adapter. You should install the one that best fits your project’s existing setup or preference.
+
+Ethers
+Wagmi
+This adapter uses Ethers.js for interacting with EVM chains.
+
+npx expo install @reown/appkit-ethers-react-native
+To initialize the Ethers adapter:
+
+import { EthersAdapter } from '@reown/appkit-ethers-react-native';
+
+const ethersAdapter = new EthersAdapter();
+​
+Implementation
+​
+Prerequisites
+Before setting up AppKit, you need to wrap your app with SafeAreaProvider from react-native-safe-area-context. This is required for proper modal rendering and safe area handling.
+Expo users: You can skip this step as it’s already handled internally by Expo.
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+function App() {
+  return <SafeAreaProvider>{/* Your app content */}</SafeAreaProvider>;
+}
+For more detailed information about SafeAreaProvider, check the official documentation.
+​
+1. Initialize AppKit
+Create an instance of AppKit. This is where you’ll configure your project ID (if using WalletConnect features) and define the chains your application will support, along with their respective adapters.
+To ensure proper functioning with React Native, make sure import "@walletconnect/react-native-compat"; is the very first line in your configuration file (e.g., AppKitConfig.ts), even before other imports. This import handles necessary polyfills.
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit, bitcoin, solana, type AppKitNetwork } from '@reown/appkit-react-native';
+import { EthersAdapter } from '@reown/appkit-ethers-react-native';
+import { SolanaAdapter } from '@reown/appkit-solana-react-native';
+import { BitcoinAdapter } from '@reown/appkit-bitcoin-react-native';
+
+// You can use 'viem/chains' or define your own chains using `AppKitNetwork` type. Check Options/networks for more detailed info
+import { mainnet, polygon } from 'viem/chains';
+
+const projectId = 'YOUR_PROJECT_ID'; // Obtain from https://dashboard.reown.com/
+
+const ethersAdapter = new EthersAdapter();
+const solanaAdapter = new SolanaAdapter();
+const bitcoinAdapter = new BitcoinAdapter();
+
+export const appKit = createAppKit({
+  projectId,
+  networks: [mainnet, polygon, solana, bitcoin],
+  defaultNetwork: mainnet, // Optional: set a default network
+  adapters: [ethersAdapter, solanaAdapter, bitcoinAdapter],
+
+  // Other AppKit options (e.g., metadata for your dApp)
+  metadata: {
+    name: 'My Awesome dApp',
+    description: 'My dApp description',
+    url: 'https://myapp.com',
+    icons: ['https://myapp.com/icon.png'],
+    redirect: {
+      native: "YOUR_APP_SCHEME://",
+      universal: "YOUR_APP_UNIVERSAL_LINK.com",
+    },
+  }
+});
+Default Features: AppKit comes with email and social login, swaps, and onramp features enabled by default. To disable any of these features, see the Options documentation for configuration details.
+​
+2. Configure Storage
+For data to persist across sessions, you need to provide a storage solution. The createAppKit function accepts a storage option that must conform to the Storage interface.
+The Storage interface, which can be imported from @reown/appkit-react-native, is defined as follows:
+export interface Storage {
+  /**
+   * Returns all keys in storage.
+   */
+  getKeys(): Promise<string[]>;
+
+  /**
+   * Returns all key-value entries in storage.
+   */
+  getEntries<T = any>(): Promise<[string, T][]>;
+
+  /**
+   * Get an item from storage for a given key.
+   * @param key The key to retrieve.
+   */
+  getItem<T = any>(key: string): Promise<T | undefined>;
+
+  /**
+   * Set an item in storage for a given key.
+   * @param key The key to set.
+   * @param value The value to set.
+   */
+  setItem<T = any>(key: string, value: T): Promise<void>;
+
+  /**
+   * Remove an item from storage for a given key.
+   * @param key The key to remove.
+   */
+  removeItem(key: string): Promise<void>;
+}
+For complete storage implementation examples, see the Storage Options documentation.
+Update AppKit Configuration
+Finally, import your custom storage and pass it to createAppKit in your AppKitConfig.ts. This example builds on the configuration from Initialize AppKit:
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit, bitcoin, solana, type AppKitNetwork } from '@reown/appkit-react-native';
+import { EthersAdapter } from '@reown/appkit-ethers-react-native';
+import { SolanaAdapter } from '@reown/appkit-solana-react-native';
+import { BitcoinAdapter } from '@reown/appkit-bitcoin-react-native';
+import { storage } from './StorageUtil'; // Import your custom storage
+
+// You can use 'viem/chains' or define your own chains using `AppKitNetwork` type. Check Options/networks for more detailed info
+import { mainnet, polygon } from 'viem/chains';
+
+const projectId = 'YOUR_PROJECT_ID'; // Obtain from https://dashboard.reown.com/
+
+const ethersAdapter = new EthersAdapter();
+const solanaAdapter = new SolanaAdapter();
+const bitcoinAdapter = new BitcoinAdapter();
+
+export const appKit = createAppKit({
+  projectId,
+  networks: [mainnet, polygon, solana, bitcoin],
+  defaultNetwork: mainnet,
+  adapters: [ethersAdapter, solanaAdapter, bitcoinAdapter],
+  storage,
+
+  // Other AppKit options (e.g., metadata for your dApp)
+  metadata: {
+    name: 'My Awesome dApp',
+    description: 'My dApp description',
+    url: 'https://myapp.com',
+    icons: ['https://myapp.com/icon.png'],
+    redirect: {
+      native: "YOUR_APP_SCHEME://",
+      universal: "YOUR_APP_UNIVERSAL_LINK.com",
+    },
+  }
+});
+​
+3. Provide AppKit Instance
+Wrap your application with the AppKitProvider to make the AppKit instance available throughout your component tree via context.
+// App.tsx
+import "@walletconnect/react-native-compat";
+
+import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppKitProvider } from '@reown/appkit-react-native';
+import { appKit } from './AppKitConfig'; // Your configured AppKit instance
+import YourAppRootComponent from './YourAppRootComponent';
+
+function App() {
+  return (
+    <SafeAreaProvider>
+      <AppKitProvider instance={appKit}>
+        <YourAppRootComponent />
+      </AppKitProvider>
+    </SafeAreaProvider>
+  );
+}
+
+export default App;
+​
+4. Render AppKit UI
+To display the AppKit modal and other potential UI elements, you need to include the <AppKit /> component in your application. If you want the modal to be accessible from anywhere in your app, it’s best to place this component within your main application root component (e.g., the YourAppRootComponent from the example above, or directly in App.tsx if it serves as your main layout).
+// YourAppRootComponent.tsx (or App.tsx if it contains your main layout)
+import React from 'react';
+import { AppKit } from '@reown/appkit-react-native';
+// ... other imports for your app components.
+
+function YourAppRootComponent() {
+  return (
+    <>
+      {/* Your application's content */}
+      {/* Add the AppKit component here to render its UI */}
+      <AppKit />
+    </>
+  );
+}
+
+export default YourAppRootComponent;
+Expo Android Modal Issue: If you’re using Expo Router and the modal doesn’t open on Android, you may need to wrap the <AppKit /> component in a View with absolute positioning. Here’s the workaround:
+import { View } from 'react-native';
+
+// Replace the simple <AppKit /> with:
+<View style={{ position: "absolute", height: "100%", width: "100%" }}>
+  <AppKit />
+</View>
+This is a known issue with Expo Router on Android and this workaround resolves the modal rendering problem.
+​
+5. Using AppKit in Components
+You can now access AppKit functionalities (like connecting, getting account state, etc.) using hooks provided by the library.
+// components/ConnectButton.tsx
+import { useAppKit, useAccount } from '@reown/appkit-react-native';
+
+function ConnectButton() {
+  const { open, disconnect } = useAppKit();
+  const { address, isConnected, chainId } = useAccount();
+
+  if (isConnected) {
+    return (
+      <div>
+        <p>Connected to: {chainId}</p>
+        <p>Address: {address}</p>
+        <button onClick={() => disconnect()}>Disconnect</button>
+      </div>
+    );
+  }
+
+  return <button onClick={() => open()}>Connect Wallet</button>;
+}
+
+export default ConnectButton;
+For detailed examples on specific actions like signing messages, sending transactions, or switching networks, please refer to the Hooks and Examples sections.
+Pre-built Components
+AppKit includes pre-built components to speed up your development:
+<AppKitButton /> - A pre-styled connect button
+<AppKitAccountButton /> - A button showing account information when connected
+For detailed information about all available components, hooks, and examples for specific actions like signing messages, sending transactions, or switching networks, see the Components, Hooks, and Examples documentation.
+​
+Enable Wallet Detection
+Optional feature - This detects wallets installed on the user’s device and enhances the user experience by:
+Showing a green checkmark next to installed wallets
+Prioritizing installed wallets at the top of the wallet selection list
+All 600+ wallets in the AppKit ecosystem work via WalletConnect protocol regardless of this configuration. You only need to add the wallets your users most commonly have installed.
+To enable AppKit to detect wallets installed on the device, you can make specific changes to the native code of your project.
+Expo
+React Native CLI
+iOS
+Android
+To enable AppKit to detect wallets installed on the device in your Expo project for iOS, follow these steps:
+Open your app.json (or app.config.js) file.
+Locate the ios section within the configuration.
+Add the infoPlist object if it doesn’t exist, and within it, include the LSApplicationQueriesSchemes array. This array will contain the desired wallet schemes you want to detect.
+Add the wallet schemes to the LSApplicationQueriesSchemes array.
+Your configuration should look like this:
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "metamask",
+          "trust",
+          "safe",
+          "rainbow",
+          "uniswap"
+          // Add other wallet schemes names here
+        ]
+      }
+    }
+  }
+}
+​
+Connectors
+Optional feature - These connectors are only needed if you want to support specific wallets that use custom connection protocols. All 600+ wallets in the AppKit ecosystem work via WalletConnect protocol regardless of this configuration.
+AppKit supports various custom connectors for specific wallets that use their own connection protocols. These connectors allow you to integrate popular wallets like Coinbase and Phantom directly into your AppKit configuration.
+​
+Coinbase
+Coinbase Wallet is a popular wallet that uses a custom connection protocol. To enable it in your AppKit configuration, you’ll need to install the Coinbase SDK and add a specific connector.
+Expo Compatibility: Coinbase SDK works with Expo Prebuild but not with Expo Go. You’ll need to use expo prebuild to generate native code before building your app.
+To enable Coinbase Wallet, follow these steps:
+Enable Expo Modules in your project:
+npx install-expo-modules@latest
+Install the Coinbase SDK and our custom connector:
+yarn add @coinbase/wallet-mobile-sdk @reown/appkit-coinbase-react-native react-native-mmkv
+Run pod-install:
+npx pod-install
+Set up deeplink handling in your project following the React Native docs
+Add Coinbase package configuration to your native files:
+// AndroidManifest.xml
+
+<queries>
+  <!-- other queries -->
+  <package android:name="org.toshi" />
+</queries>
+// Info.plist
+
+<key>LSApplicationQueriesSchemes</key>
+<array>
+  <!-- other schemes -->
+  <string>cbwallet</string>
+</array>
+Add the custom connector to your extraConnectors:
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit } from '@reown/appkit-react-native';
+import { MMKV } from 'react-native-mmkv';
+import { CoinbaseConnector } from '@reown/appkit-coinbase-react-native';
+
+export const appKit = createAppKit({
+  // ...
+  extraConnectors: [
+    new CoinbaseConnector({ storage: new MMKV() })
+  ],
+  // ...
+});
+Add the Coinbase response handler to process wallet responses:
+import { handleResponse } from "@coinbase/wallet-mobile-sdk";
+
+// Add this to your app's deeplink handling code
+useEffect(() => {
+  const sub = Linking.addEventListener("url", ({ url }) => {
+    const handledBySdk = handleResponse(new URL(url));
+    if (!handledBySdk) {
+      // Handle other deeplinks
+    }
+  });
+
+  return () => sub.remove();
+}, []);
+For more detailed information, check the Coinbase docs.
+​
+Phantom & Solflare
+Phantom and Solflare are popular wallets on the Solana blockchain. Because they use a custom connection protocol, it requires a specific connector to be added to your AppKit configuration.
+To enable Phantom Wallet, you’ll need to import the PhantomConnector or SolflareConnector from @reown/appkit-solana-react-native and add it to the extraConnectors array in your createAppKit configuration.
+Here’s how to update your AppKitConfig.ts file, using the example from the Implementation section as a base:
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit } from '@reown/appkit-react-native';
+import { SolanaAdapter, PhantomConnector, Solflare } from '@reown/appkit-solana-react-native';
+
+export const appKit = createAppKit({
+  // ...
+  extraConnectors: [
+    new PhantomConnector({ cluster: 'mainnet-beta' }), // Or 'devnet', 'testnet'
+    new SolflareConnector({ cluster: 'mainnet-beta' }) // Or 'devnet', 'testnet'
+  ],
+  // ...
+});
+The cluster option can be set to 'mainnet-beta', 'devnet', or 'testnet' depending on which Solana cluster you want to connect to.
+​
+Examples
+Wagmi
+Ethers
+Ethers v5
+AppKit with Wagmi example
+Check the React Native example using Wagmi
+​
+Test Apps
+Want to see AppKit in action? Download our sample AppKit apps below and explore what it can do. Enjoy! 😊
+Android Build (Firebase)
+iOS Build (Testflight)
+​
+Getting Support 🙋
+Reown is committed to delivering the best developer experience.
+If you have any questions, feature requests, or bug reports, feel free to open an issue on GitHub
+Was this page helpful?
+
+
+Yes
+
+Installation
+
+Open in ChatGPT
+
+AppKit for React Native enables seamless integration with multiple blockchain ecosystems, including EVM chains (like Ethereum, Polygon, etc.), Solana, and Bitcoin. It provides a unified API to manage wallet connections, interact with different chains, and build rich multi-chain applications.
+At the core of AppKit is a centralized AppKit instance that handles connection logic, manages various chain adapters, and provides data to your application via a React Context.
+Don’t have a project ID?
+Head over to Reown Dashboard and create a new project now!
+Get started
+​
+Installation
+​
+AppKit CLI
+Get started quickly with our dedicated CLI that sets up a minimal AppKit configuration for you.
+Run the command below and select React Native:
+npx @reown/appkit-cli
+​
+Add AppKit to your existing project
+Installation is a two-step process:
+Install the core AppKit library.
+Install the specific chain adapters you need for your application.
+Expo
+React Native CLI
+​
+Core Library
+npx expo install @reown/appkit-react-native @react-native-async-storage/async-storage react-native-get-random-values react-native-svg @react-native-community/netinfo @walletconnect/react-native-compat react-native-safe-area-context expo-application
+​
+Create babel.config.js
+For Expo SDK 53 and later, you need to create a babel.config.js file in your project root to properly support the valtio library:
+module.exports = function (api) {
+  api.cache(true);
+  return {
+    presets: [["babel-preset-expo", { unstable_transformImportMeta: true }]],
+  };
+};
+This configuration enables the unstable_transformImportMeta option which is required for valtio to work correctly with Expo 53+.
+​
+Chain Adapters
+For React Native CLI projects, use npm install ... or yarn add ....
+Install the adapters for the chains you intend to support:
+EVM
+Solana
+Bitcoin
+For EVM-compatible chains, you can choose between the Ethers.js-based adapter or the Wagmi-based adapter. You should install the one that best fits your project’s existing setup or preference.
+
+Ethers
+Wagmi
+This adapter uses Ethers.js for interacting with EVM chains.
+
+npx expo install @reown/appkit-ethers-react-native
+To initialize the Ethers adapter:
+
+import { EthersAdapter } from '@reown/appkit-ethers-react-native';
+
+const ethersAdapter = new EthersAdapter();
+​
+Implementation
+​
+Prerequisites
+Before setting up AppKit, you need to wrap your app with SafeAreaProvider from react-native-safe-area-context. This is required for proper modal rendering and safe area handling.
+Expo users: You can skip this step as it’s already handled internally by Expo.
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+function App() {
+  return <SafeAreaProvider>{/* Your app content */}</SafeAreaProvider>;
+}
+For more detailed information about SafeAreaProvider, check the official documentation.
+​
+1. Initialize AppKit
+Create an instance of AppKit. This is where you’ll configure your project ID (if using WalletConnect features) and define the chains your application will support, along with their respective adapters.
+To ensure proper functioning with React Native, make sure import "@walletconnect/react-native-compat"; is the very first line in your configuration file (e.g., AppKitConfig.ts), even before other imports. This import handles necessary polyfills.
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit, bitcoin, solana, type AppKitNetwork } from '@reown/appkit-react-native';
+import { EthersAdapter } from '@reown/appkit-ethers-react-native';
+import { SolanaAdapter } from '@reown/appkit-solana-react-native';
+import { BitcoinAdapter } from '@reown/appkit-bitcoin-react-native';
+
+// You can use 'viem/chains' or define your own chains using `AppKitNetwork` type. Check Options/networks for more detailed info
+import { mainnet, polygon } from 'viem/chains';
+
+const projectId = 'YOUR_PROJECT_ID'; // Obtain from https://dashboard.reown.com/
+
+const ethersAdapter = new EthersAdapter();
+const solanaAdapter = new SolanaAdapter();
+const bitcoinAdapter = new BitcoinAdapter();
+
+export const appKit = createAppKit({
+  projectId,
+  networks: [mainnet, polygon, solana, bitcoin],
+  defaultNetwork: mainnet, // Optional: set a default network
+  adapters: [ethersAdapter, solanaAdapter, bitcoinAdapter],
+
+  // Other AppKit options (e.g., metadata for your dApp)
+  metadata: {
+    name: 'My Awesome dApp',
+    description: 'My dApp description',
+    url: 'https://myapp.com',
+    icons: ['https://myapp.com/icon.png'],
+    redirect: {
+      native: "YOUR_APP_SCHEME://",
+      universal: "YOUR_APP_UNIVERSAL_LINK.com",
+    },
+  }
+});
+Default Features: AppKit comes with email and social login, swaps, and onramp features enabled by default. To disable any of these features, see the Options documentation for configuration details.
+​
+2. Configure Storage
+For data to persist across sessions, you need to provide a storage solution. The createAppKit function accepts a storage option that must conform to the Storage interface.
+The Storage interface, which can be imported from @reown/appkit-react-native, is defined as follows:
+export interface Storage {
+  /**
+   * Returns all keys in storage.
+   */
+  getKeys(): Promise<string[]>;
+
+  /**
+   * Returns all key-value entries in storage.
+   */
+  getEntries<T = any>(): Promise<[string, T][]>;
+
+  /**
+   * Get an item from storage for a given key.
+   * @param key The key to retrieve.
+   */
+  getItem<T = any>(key: string): Promise<T | undefined>;
+
+  /**
+   * Set an item in storage for a given key.
+   * @param key The key to set.
+   * @param value The value to set.
+   */
+  setItem<T = any>(key: string, value: T): Promise<void>;
+
+  /**
+   * Remove an item from storage for a given key.
+   * @param key The key to remove.
+   */
+  removeItem(key: string): Promise<void>;
+}
+For complete storage implementation examples, see the Storage Options documentation.
+Update AppKit Configuration
+Finally, import your custom storage and pass it to createAppKit in your AppKitConfig.ts. This example builds on the configuration from Initialize AppKit:
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit, bitcoin, solana, type AppKitNetwork } from '@reown/appkit-react-native';
+import { EthersAdapter } from '@reown/appkit-ethers-react-native';
+import { SolanaAdapter } from '@reown/appkit-solana-react-native';
+import { BitcoinAdapter } from '@reown/appkit-bitcoin-react-native';
+import { storage } from './StorageUtil'; // Import your custom storage
+
+// You can use 'viem/chains' or define your own chains using `AppKitNetwork` type. Check Options/networks for more detailed info
+import { mainnet, polygon } from 'viem/chains';
+
+const projectId = 'YOUR_PROJECT_ID'; // Obtain from https://dashboard.reown.com/
+
+const ethersAdapter = new EthersAdapter();
+const solanaAdapter = new SolanaAdapter();
+const bitcoinAdapter = new BitcoinAdapter();
+
+export const appKit = createAppKit({
+  projectId,
+  networks: [mainnet, polygon, solana, bitcoin],
+  defaultNetwork: mainnet,
+  adapters: [ethersAdapter, solanaAdapter, bitcoinAdapter],
+  storage,
+
+  // Other AppKit options (e.g., metadata for your dApp)
+  metadata: {
+    name: 'My Awesome dApp',
+    description: 'My dApp description',
+    url: 'https://myapp.com',
+    icons: ['https://myapp.com/icon.png'],
+    redirect: {
+      native: "YOUR_APP_SCHEME://",
+      universal: "YOUR_APP_UNIVERSAL_LINK.com",
+    },
+  }
+});
+​
+3. Provide AppKit Instance
+Wrap your application with the AppKitProvider to make the AppKit instance available throughout your component tree via context.
+// App.tsx
+import "@walletconnect/react-native-compat";
+
+import React from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppKitProvider } from '@reown/appkit-react-native';
+import { appKit } from './AppKitConfig'; // Your configured AppKit instance
+import YourAppRootComponent from './YourAppRootComponent';
+
+function App() {
+  return (
+    <SafeAreaProvider>
+      <AppKitProvider instance={appKit}>
+        <YourAppRootComponent />
+      </AppKitProvider>
+    </SafeAreaProvider>
+  );
+}
+
+export default App;
+​
+4. Render AppKit UI
+To display the AppKit modal and other potential UI elements, you need to include the <AppKit /> component in your application. If you want the modal to be accessible from anywhere in your app, it’s best to place this component within your main application root component (e.g., the YourAppRootComponent from the example above, or directly in App.tsx if it serves as your main layout).
+// YourAppRootComponent.tsx (or App.tsx if it contains your main layout)
+import React from 'react';
+import { AppKit } from '@reown/appkit-react-native';
+// ... other imports for your app components.
+
+function YourAppRootComponent() {
+  return (
+    <>
+      {/* Your application's content */}
+      {/* Add the AppKit component here to render its UI */}
+      <AppKit />
+    </>
+  );
+}
+
+export default YourAppRootComponent;
+Expo Android Modal Issue: If you’re using Expo Router and the modal doesn’t open on Android, you may need to wrap the <AppKit /> component in a View with absolute positioning. Here’s the workaround:
+import { View } from 'react-native';
+
+// Replace the simple <AppKit /> with:
+<View style={{ position: "absolute", height: "100%", width: "100%" }}>
+  <AppKit />
+</View>
+This is a known issue with Expo Router on Android and this workaround resolves the modal rendering problem.
+​
+5. Using AppKit in Components
+You can now access AppKit functionalities (like connecting, getting account state, etc.) using hooks provided by the library.
+// components/ConnectButton.tsx
+import { useAppKit, useAccount } from '@reown/appkit-react-native';
+
+function ConnectButton() {
+  const { open, disconnect } = useAppKit();
+  const { address, isConnected, chainId } = useAccount();
+
+  if (isConnected) {
+    return (
+      <div>
+        <p>Connected to: {chainId}</p>
+        <p>Address: {address}</p>
+        <button onClick={() => disconnect()}>Disconnect</button>
+      </div>
+    );
+  }
+
+  return <button onClick={() => open()}>Connect Wallet</button>;
+}
+
+export default ConnectButton;
+For detailed examples on specific actions like signing messages, sending transactions, or switching networks, please refer to the Hooks and Examples sections.
+Pre-built Components
+AppKit includes pre-built components to speed up your development:
+<AppKitButton /> - A pre-styled connect button
+<AppKitAccountButton /> - A button showing account information when connected
+For detailed information about all available components, hooks, and examples for specific actions like signing messages, sending transactions, or switching networks, see the Components, Hooks, and Examples documentation.
+​
+Enable Wallet Detection
+Optional feature - This detects wallets installed on the user’s device and enhances the user experience by:
+Showing a green checkmark next to installed wallets
+Prioritizing installed wallets at the top of the wallet selection list
+All 600+ wallets in the AppKit ecosystem work via WalletConnect protocol regardless of this configuration. You only need to add the wallets your users most commonly have installed.
+To enable AppKit to detect wallets installed on the device, you can make specific changes to the native code of your project.
+Expo
+React Native CLI
+iOS
+Android
+To enable AppKit to detect wallets installed on the device in your Expo project for iOS, follow these steps:
+Open your app.json (or app.config.js) file.
+Locate the ios section within the configuration.
+Add the infoPlist object if it doesn’t exist, and within it, include the LSApplicationQueriesSchemes array. This array will contain the desired wallet schemes you want to detect.
+Add the wallet schemes to the LSApplicationQueriesSchemes array.
+Your configuration should look like this:
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "metamask",
+          "trust",
+          "safe",
+          "rainbow",
+          "uniswap"
+          // Add other wallet schemes names here
+        ]
+      }
+    }
+  }
+}
+​
+Connectors
+Optional feature - These connectors are only needed if you want to support specific wallets that use custom connection protocols. All 600+ wallets in the AppKit ecosystem work via WalletConnect protocol regardless of this configuration.
+AppKit supports various custom connectors for specific wallets that use their own connection protocols. These connectors allow you to integrate popular wallets like Coinbase and Phantom directly into your AppKit configuration.
+​
+Coinbase
+Coinbase Wallet is a popular wallet that uses a custom connection protocol. To enable it in your AppKit configuration, you’ll need to install the Coinbase SDK and add a specific connector.
+Expo Compatibility: Coinbase SDK works with Expo Prebuild but not with Expo Go. You’ll need to use expo prebuild to generate native code before building your app.
+To enable Coinbase Wallet, follow these steps:
+Enable Expo Modules in your project:
+npx install-expo-modules@latest
+Install the Coinbase SDK and our custom connector:
+yarn add @coinbase/wallet-mobile-sdk @reown/appkit-coinbase-react-native react-native-mmkv
+Run pod-install:
+npx pod-install
+Set up deeplink handling in your project following the React Native docs
+Add Coinbase package configuration to your native files:
+// AndroidManifest.xml
+
+<queries>
+  <!-- other queries -->
+  <package android:name="org.toshi" />
+</queries>
+// Info.plist
+
+<key>LSApplicationQueriesSchemes</key>
+<array>
+  <!-- other schemes -->
+  <string>cbwallet</string>
+</array>
+Add the custom connector to your extraConnectors:
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit } from '@reown/appkit-react-native';
+import { MMKV } from 'react-native-mmkv';
+import { CoinbaseConnector } from '@reown/appkit-coinbase-react-native';
+
+export const appKit = createAppKit({
+  // ...
+  extraConnectors: [
+    new CoinbaseConnector({ storage: new MMKV() })
+  ],
+  // ...
+});
+Add the Coinbase response handler to process wallet responses:
+import { handleResponse } from "@coinbase/wallet-mobile-sdk";
+
+// Add this to your app's deeplink handling code
+useEffect(() => {
+  const sub = Linking.addEventListener("url", ({ url }) => {
+    const handledBySdk = handleResponse(new URL(url));
+    if (!handledBySdk) {
+      // Handle other deeplinks
+    }
+  });
+
+  return () => sub.remove();
+}, []);
+For more detailed information, check the Coinbase docs.
+​
+Phantom & Solflare
+Phantom and Solflare are popular wallets on the Solana blockchain. Because they use a custom connection protocol, it requires a specific connector to be added to your AppKit configuration.
+To enable Phantom Wallet, you’ll need to import the PhantomConnector or SolflareConnector from @reown/appkit-solana-react-native and add it to the extraConnectors array in your createAppKit configuration.
+Here’s how to update your AppKitConfig.ts file, using the example from the Implementation section as a base:
+// src/AppKitConfig.ts (or wherever you prefer to configure it)
+import "@walletconnect/react-native-compat";
+
+import { createAppKit } from '@reown/appkit-react-native';
+import { SolanaAdapter, PhantomConnector, Solflare } from '@reown/appkit-solana-react-native';
+
+export const appKit = createAppKit({
+  // ...
+  extraConnectors: [
+    new PhantomConnector({ cluster: 'mainnet-beta' }), // Or 'devnet', 'testnet'
+    new SolflareConnector({ cluster: 'mainnet-beta' }) // Or 'devnet', 'testnet'
+  ],
+  // ...
+});
+The cluster option can be set to 'mainnet-beta', 'devnet', or 'testnet' depending on which Solana cluster you want to connect to.
+​
+Examples
+Wagmi
+Ethers
+Ethers v5
+AppKit with Wagmi example
+Check the React Native example using Wagmi
+​
+Test Apps
+Want to see AppKit in action? Download our sample AppKit apps below and explore what it can do. Enjoy! 😊
+Android Build (Firebase)
+iOS Build (Testflight)
+​
+Getting Support 🙋
+Reown is committed to delivering the best developer experience.
+If you have any questions, feature requests, or bug reports, feel free to open an issue on GitHub
+Was this page helpful?
+
+
+Yes
+
+Hooks
+
+Open in ChatGPT
+
+AppKit for React Native provides a set of hooks to interact with the wallet connection lifecycle, access connection state, and control the modal.
+All hooks are imported from @reown/appkit-react-native.
+​
+useAppKit()
+The primary hook for controlling the modal’s visibility and behavior. Use this hook when you need to programmatically open or close the modal, or when you want to show specific views like the connection screen or account details.
+import { useAppKit } from '@reown/appkit-react-native';
+
+export default function MyComponent() {
+  const {
+    // Modal Control
+    open, // Function to open the modal, optionally with a specific view
+    close, // Function to close the modal
+
+    // Actions
+    disconnect, // Function to disconnect the current session
+    switchNetwork, // Function to attempt to switch to a different chain/network
+  } = useAppKit();
+}
+​
+Use Cases
+Opening the modal when a user clicks a “Connect Wallet” button
+Closing the modal after a successful connection
+Opening specific views of the modal (e.g., account view, connect view)
+Disconnecting users from their wallets
+Switching between different blockchain networks
+​
+Returns
+open: Function to open the modal
+close: Function to close the modal
+disconnect: Function to disconnect the current session
+switchNetwork: Function to switch to a different chain/network
+​
+Parameters
+You can direct the modal to open to a specific view using the open function:
+open({ view: 'Account' }); // Opens to the account view if connected
+open({ view: 'Connect' }); // Opens to the wallet selection view
+open({ view: 'Networks' }); // Opens to the network selection view
+Here is a list of possible views you can select:
+Variable	Description
+Connect	Principal view of the modal - default view when disconnected.
+WalletConnect	View with a QR code to scan with wallets and connect via WalletConnect
+Account	User profile - default view when connected.
+Networks	List of available networks - you can select and target a specific network before connecting.
+WhatIsANetwork	”What is a network” onboarding view.
+WhatIsAWallet	”What is a wallet” onboarding view.
+​
+useAccount()
+The essential hook for accessing wallet connection state and user information. Use this hook whenever you need to know if a user is connected, get their wallet address, or access their account details.
+import { useAccount } from '@reown/appkit-react-native';
+
+export default function MyComponent() {
+  const {
+    address, // String, the connected account address (e.g., '0x...', 'Sol...', 'bc1...')
+    chainId, // Number or String, the chain ID of the currently active connection
+    isConnected, // Boolean, true if a wallet is connected on the current chain/namespace
+    namespace, // String, the active namespace (e.g., 'eip155', 'solana', 'bip122')
+    chain, // AppKitNetwork object with active chain information
+  } = useAccount();
+
+  if (isConnected) {
+    return (
+      <div>
+        <p>Connected to chain: {chainId}</p>
+        <p>Namespace: {namespace}</p>
+        <p>Chain: {chain?.name}</p>
+        <p>Address: {address}</p>
+      </div>
+    );
+  }
+  return <p>Not Connected</p>;
+}
+​
+Use Cases
+Displaying the connected wallet address in your UI
+Checking if a user is connected before showing certain features
+Getting user information for authentication flows
+Handling multi-chain scenarios where you need account info for specific chains
+Implementing conditional rendering based on connection status
+Accessing the active blockchain namespace for chain-specific logic
+Getting detailed chain information for network-specific features
+​
+Returns
+address: The connected account address (string)
+chainId: The chain ID of the currently active connection (number or string)
+isConnected: Boolean indicating if a wallet is connected on the current chain/namespace
+namespace: The active namespace (string, e.g., ‘eip155’, ‘solana’, ‘bip122’)
+chain: The active chain object with detailed chain information (AppKitNetwork type)
+​
+useProvider()
+The provider access hook that provides access to the underlying chain-specific provider for the currently active connection. Use this hook when you need to perform direct interactions with the blockchain that go beyond the standard AppKit actions.
+By default, useProvider() returns the provider for the currently active network.
+import { useProvider, useAccount } from '@reown/appkit-react-native';
+
+export default function ChainSpecificActions() {
+  // Get provider for the current active network
+  const { provider, providerType } = useProvider();
+
+  const { chainId, address, isConnected } = useAccount();
+
+  if (!isConnected || !provider) {
+    return <p>Please connect your wallet.</p>;
+  }
+
+  const handleSignMessageEVM = async () => {
+    if (providerType === 'eip155' && address) {
+      console.log('EVM sign message functionality to be implemented using the provider.');
+    }
+  };
+
+  const handleSignMessageSolana = async () => {
+    if (providerType === 'solana' && address) {
+      console.log('Solana sign message functionality to be implemented using the provider.');
+    }
+  };
+
+  // Similar functions can be created for Bitcoin
+
+  return (
+    <div>
+      <p>Current Chain ID: {chainId}</p>
+      <p>Provider Type: {providerType || 'N/A'}</p>
+      {providerType === 'eip155' && <button onClick={handleSignMessageEVM}>Sign EVM Message</button>}
+      {providerType === 'solana' && <button onClick={handleSignMessageSolana}>Sign Solana Message</button>}
+      {/* Add buttons for other provider types as needed */}
+    </div>
+  );
+}
+​
+Use Cases
+Accessing the wallet provider for direct blockchain interactions
+Signing transactions and messages with the connected wallet
+Integrating with blockchain-specific libraries (ethers, solana web3, etc.)
+Building custom wallet interactions across different chains
+Performing advanced blockchain operations not covered by AppKit’s standard actions
+​
+Returns
+provider: The underlying chain-specific provider for the currently active connection
+providerType: The type of provider (e.g., ‘eip155’, ‘solana’, ‘bip122’)
+Refer to the example usage in:
+EVM + Ethers
+EVM + Wagmi
+Solana
+Bitcoin
+​
+useWalletInfo()
+The wallet information hook that provides details about the connected wallet. Use this hook when you need to display wallet-specific information, show wallet branding, or implement wallet-specific features.
+import { useWalletInfo } from '@reown/appkit-react-native';
+
+export default function WalletDetails() {
+  const { walletInfo } = useWalletInfo();
+
+  if (!walletInfo) {
+    return <p>No wallet connected or info unavailable.</p>;
+  }
+
+  return (
+    <div>
+      <h3>Connected Wallet:</h3>
+      <p>Name: {walletInfo.name}</p>
+      <p>Icon: {walletInfo.icon && <img src={walletInfo.icon} alt={walletInfo.name} width="24" />}</p>
+      {/* Refer to TypeUtil.ts for other walletInfo properties e.g., rdns, id etc. */}
+    </div>
+  );
+}
+​
+Use Cases
+Displaying wallet-specific information in your UI
+Implementing wallet-specific features
+Showing wallet icons or branding
+Handling wallet-specific behaviors
+Creating custom wallet selection interfaces
+​
+Returns
+walletInfo: Object containing metadata about the connected wallet (name, icon, rdns, id, etc.)
+The exact structure of walletInfo can be found in the WalletInfo type definition in packages/common/src/utils/TypeUtil.ts.
+​
+useAppKitEventSubscription()
+The event subscription hook that allows you to listen to modal and wallet events. Use this hook when you need to track user interactions, implement analytics, or respond to specific wallet events in your application.
+import { useAppKitEventSubscription } from '@reown/appkit-react-native';
+
+export default function EventLogger() {
+  useAppKitEventSubscription('MODAL_OPEN', event => { console.log('Modal opened!', event); });
+
+  useAppKitEventSubscription('CONNECT_SUCCESS', event => { console.log('Wallet connected!', event); });
+
+  return null;
+}
+​
+Use Cases
+Tracking user interactions with the modal
+Implementing analytics for wallet connections
+Creating custom notifications for connection events
+Handling specific wallet events in your application
+Monitoring connection state changes
+​
+Parameters
+eventType: The specific event type to subscribe to (e.g., ‘MODAL_OPEN’, ‘CONNECT_SUCCESS’)
+callback: Function that is executed when the event is triggered
+The full list of event types and their payloads can be found in AppKitEvents within packages/core/src/utils/TypeUtil.ts.
+​
+useAppKitState()
+The state management hook that provides real-time access to the modal’s current state and connection status. Use this hook when you need to react to modal state changes or synchronize your UI with the modal’s status.
+import { useAppKitState } from '@reown/appkit-react-native';
+
+export default function AppStatus() {
+  const {
+    isOpen, // Boolean indicating if the modal is currently open
+    isLoading, // Boolean indicating if the modal is loading
+    isConnected, // Boolean indicating if a user is connected
+    chain, // The connected chain object
+  } = useAppKitState();
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <p>Modal is {isOpen ? 'open' : 'closed'}</p>
+      <p>User is {isConnected ? 'connected' : 'not connected'}</p>
+      {chain && <p>Connected to: {chain.name}</p>}
+    </div>
+  );
+}
+​
+Use Cases
+Syncing your UI with the modal’s open/closed state
+Creating custom UI elements that respond to modal state changes
+Implementing custom loading states based on modal state
+Checking connection status without accessing account details
+Displaying chain-specific UI based on the connected blockchain
+​
+Returns
+isOpen: Boolean indicating if the modal is currently open
+isLoading: Boolean indicating if the modal is loading
+isConnected: Boolean indicating if a user is connected
+chain: The connected chain object
+​
+useAppKitLogs()
+The logging hook that provides access to AppKit’s internal logging system. Use this hook when you need to debug your application, monitor AppKit’s behavior, or export logs for troubleshooting purposes.
+import { useAppKitLogs } from '@reown/appkit-react-native';
+
+export default function DebugPanel() {
+  const {
+    logs, // All logs from AppKit
+    errorLogs, // Error-level logs only
+    warningLogs, // Warning-level logs only
+    infoLogs, // Info-level logs only
+    debugLogs, // Debug-level logs only
+    getLogsByLevel, // Get logs filtered by level
+    getRecentLogs, // Get recent logs (default: 100)
+    exportLogs, // Export all logs as JSON string
+    getLogsStats, // Get logging statistics by level
+    clearLogs, // Clear all logs
+  } = useAppKitLogs();
+
+  const handleExportLogs = () => {
+    const logData = exportLogs();
+    console.log('Exported logs:', logData);
+  };
+
+  return (
+    <div>
+      <p>Total logs: {logs.length}</p>
+      <p>Error logs: {errorLogs.length}</p>
+      <p>Warning logs: {warningLogs.length}</p>
+      <button onClick={handleExportLogs}>Export Logs</button>
+      <button onClick={clearLogs}>Clear Logs</button>
+    </div>
+  );
+}
+​
+Use Cases
+Debugging AppKit behavior and troubleshooting issues
+Monitoring application performance and error tracking
+Exporting logs for support or analysis purposes
+Building custom debugging interfaces for development
+Filtering logs by severity level or time range
+​
+Returns
+logs: All logs from AppKit (array of LogEntry objects)
+errorLogs: Error-level logs only (array of LogEntry objects)
+warningLogs: Warning-level logs only (array of LogEntry objects)
+infoLogs: Info-level logs only (array of LogEntry objects)
+debugLogs: Debug-level logs only (array of LogEntry objects)
+getLogsByLevel: Function to get logs filtered by level (error, warn, info, debug)
+getRecentLogs: Function to get recent logs (default: 100, accepts count parameter)
+exportLogs: Function to export all logs as JSON string
+getLogsStats: Function to get logging statistics by level
+clearLogs: Function to clear all logs
+This hook requires the debug option to be set to true in your AppKit configuration to capture logs. See the Options documentation for more details.
+​
+Deprecated Hooks
+​
+useDisconnect()
+The functionality of useDisconnect (which previously exposed a disconnect function) is now available directly from the useAppKit() hook.
+Was this page helpful?
+
+
+Yes
+
+Components
+
+Open in ChatGPT
+
+AppKit comes with a set of pre-built UI components to help you quickly integrate wallet connection and display functionalities into your React Native application. You can import them directly from @reown/appkit-react-native.
+​
+<AppKitButton />
+The AppKitButton is a versatile component that intelligently adapts its appearance and behavior based on the current connection status.
+When no wallet is connected, it functions as a “Connect Wallet” button.
+When a wallet is connected, it functions as an “Account” button, typically displaying account information and a disconnect option.
+Variable	Description	Type
+disabled	Enable or disable the button.	boolean
+balance	Show or hide the user’s balance.	'show' | 'hide'
+size	Default size for the button.	'md' | 'sm'
+label	The text shown in the button (primarily when disconnected).	string
+loadingLabel	The text shown in the button when the modal is open.	string
+​
+<AccountButton />
+This button is specifically designed to display when a user is connected. It typically shows account information and provides a way to disconnect or manage the connected account.
+Variable	Description	Type
+disabled	Enable or disable the button.	boolean
+balance	Show or hide the user’s balance.	'show' | 'hide'
+​
+<ConnectButton />
+This button is primarily used to initiate the connection process when no user is connected.
+Variable	Description	Type
+size	Default size for the button.	'md' | 'sm'
+label	The text shown in the button.	string
+loadingLabel	The text shown in the button when the modal is open.	string
+​
+<NetworkButton />
+This button displays the currently active network of the connection. When pressed, it opens the network selection view within the AppKit modal, allowing users to switch networks.
+Variable	Description	Type
+disabled	Enable or disable the button.	boolean
+
+
+
+Smart Accounts
+
+Open in ChatGPT
+
+​
+Overview
+💡 Ensure you update AppKit to the latest version for optimal compatibility.
+Smart Accounts (SAs) are enabled by default within AppKit. These accounts enhance functionality by emitting 1271 and 6492 signatures, which should be taken into account for signature verification processes, such as Sign-In with Ethereum (SIWE).
+​
+Deployment
+Smart Accounts are deployed alongside the first transaction. Until deployment, a precalculated address, known as the counterfactual address, is displayed. Despite not being deployed, the account can still sign using 6492 signatures.
+​
+Supported Networks
+Smart Accounts are available on several EVM networks. You can view the complete list of supported networks here.
+​
+User Eligibility
+Smart Accounts are exclusively available for embedded wallet users (email and social login)
+​
+FAQ
+​
+What is a Smart Account?
+A Smart Account improves the traditional account experience by replacing Externally Owned Accounts (EOAs) with a Smart Contract that follows the ERC-4337 standard. This opens up many use cases that were previously unavailable.
+Smart Accounts do no require Private Keys or Seed Phrases, instead they rely on a key or multiple keys from designated signers to access the smart account and perform actions on chain. The keys can take multiple forms including passkeys and EOA signatures.
+​
+What can I do with a Smart Account?
+Smart accounts unlock a host of use cases that were previously unavailable with EOAs. Essentially anything that can be programmed into a smart contract can be used by Smart Accounts.
+Automated Transactions: Set up recurring payments or conditional transfers.
+Multi-Signature Authorization: Require multiple approvals for a transaction to increase security.
+Delegated Transactions: Allow a third party to execute transactions on your behalf under specific conditions.
+Enhanced Security: Implement complex security mechanisms such as time-locked transactions and withdrawal limits.
+Interoperability: Interact seamlessly with decentralized applications (dApps) and decentralized finance (DeFi) protocols.
+Custom Logic: Create custom transaction rules and workflows that align with personal or business requirements.
+​
+How do I get a Smart Account?
+Existing AppKit Universal Wallet Users will be given the option to upgrade their account to a smart account. Once you upgrade you will still be able to access your EOA and self-custody your account.
+New AppKit Universal Wallet Users will be given smart accounts by default when they login for the first time.
+​
+Does it cost anything?
+There is a small additional cost for activating your smart account. The activation fee is added to the first transaction and covers the network fees required for deploying the new smart contract onchain.
+​
+Can I export my Smart Account?
+No, you cannot export your Smart Account. The Smart Account (SA) is deployed by the EOA and is owned by the EOA. Your EOA account will always be exportable. Also is good to know that SA don’t have seedphrases.
+​
+Can I withdraw all my funds from my Smart Account?
+Yes, you can withdraw all your funds from your Smart Account.
+​
+How to verify the message returned in the signature?
+You can verify the message returned in the signature using this viem function: verifyMessage ERC1271 / ERC6492 / ERC8010.
+​
+What are account names?
+Smart account addresses start with ’0x’ followed by 42 characters, this is the unique address of your smart account on the network. ‘0x’ addresses like this are long, unwieldy and unmemorable. AppKit allows you to assign a more memorable name for your smart account using ENS Resolvers.
+You can assign a name to your account and this will act as an alias for your account that can be shared publicly and provide a better user experience. AppKit account names are followed by the “reown.id” domain.
+​
+What can I do with my account name?
+As AppKit smart account addresses are the same across the supported networks by Pimlico, you only need one account name which can then be used across the networks.
+For example if you want someone to send you USDC on Polygon they can send it to “johnsmith.reown.id”. If you want someone wants to send you USDC on Optimism they can also use “johnsmith.reown.id”.
+
+
+Link Mode
+
+Open in ChatGPT
+
+AppKit Link Mode is a low latency mechanism for transporting One-Click Auth requests and session requests over universal links, reducing the need for a WebSocket connection with the Relay. This significantly enhances the user experience when connecting native dApps to native wallets by reducing the latency associated with networking connections, especially when the user has an unstable internet connection.
+For Link Mode to fully work, you also need to enable the One-Click Auth (SIWE) feature.
+This feature is compatible only with EVM blockchains, so if you decide to include non-EVM blockchains Link Mode mechanism is going to be disabled internally.
+​
+How to enable it:
+To support link mode, configure your Metadata with a valid universal link and set the linkMode property to true:
+const metadata = {
+  name: "AppKit App",
+  description: "AppKit for React Native",
+  url: "https://reown.com",
+  icons: ["https://avatars.githubusercontent.com/u/179229932"],
+  redirect: {
+    native: "YOUR_APP_SCHEME://",
+    universal: "https://example.com/example_dapp",
+    linkMode: true,
+  },
+};
+​
+How does it look without Link Mode?
+​
+Platform specifics:
+iOS
+Android
+To enable universal links for your app, refer to React Native Documentation.
+After following the steps provided in the official guide:
+Ensure that you handle incoming Universal Links in the your AppDelegate.mm file.
+#import <React/RCTLinkingManager.h>
+
+// Enable deeplinks
+- (BOOL)application:(UIApplication *)application
+   openURL:(NSURL *)url
+   options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options
+{
+  return [RCTLinkingManager application:application openURL:url options:options];
+}
+
+// Enable Universal Links
+- (BOOL)application:(UIApplication *)application continueUserActivity:(nonnull NSUserActivity *)userActivity
+ restorationHandler:(nonnull void (^)(NSArray<id<UIUserActivityRestoring>> * _Nullable))restorationHandler
+{
+ return [RCTLinkingManager application:application
+                  continueUserActivity:userActivity
+                    restorationHandler:restorationHandler];
+}
+Open your project in XCode and go to Settings/Signing & Capabilities/Associated Domains to add the new domain. After this, your_project.entitlement should look like this:
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.developer.associated-domains</key>
+  <array>
+    <string>applinks:example.com</string>
+  </array>
+</dict>
+</plist>
+Update/Create your domain’s .well-known/apple-app-site-association file accordingly.
+For more information about supporting universal links, visit the Supporting associated domains page
+For a debugging guide, visit the Debugging Universal Links page.
+Once everything is properly configured, and the user connects with a Link Mode-supporting wallet using One-Click Auth, your dapp will send requests through it.
+
+
+Swaps
+
+Open in ChatGPT
+
+Let users swap tokens seamlessly inside your React Native app using AppKit’s Swaps feature. With built-in provider support and real-time pricing, users can trade tokens across chains without leaving your app.
+​
+Configuration
+Swaps are enabled by default. You can enable or disable it explicitly like this:
+createAppKit({
+  projectId: 'YOUR_PROJECT_ID',
+  // ... other config options
+  features: {
+    swaps: true, // Optional - true by default
+  }
+});
+Set swaps: false to turn off the feature.
+​
+Usage
+​
+Open the Swaps View
+Use the useAppKit hook to launch the Swaps view:
+function SwapButton() {
+  const { open } = useAppKit();
+
+  const handleSwapPress = () => {
+    open({ view: 'Swap' });
+  };
+
+  return (
+    <Button
+      title="Swap Tokens"
+      onPress={handleSwapPress}
+    />
+  );
+}
+​
+What Users Can Expect
+Tapping “Swap Tokens” opens a dedicated swap interface.
+Users can:
+Select the token to swap from
+Select the token to receive
+Enter the amount
+See an instant quote with:
+Price impact
+Network fee
+Slippage tolerance
+Provider fees
+After confirming, the transaction is executed and tokens arrive directly in their wallet—no extra steps needed.
+
+
+On-Ramp
+
+Open in ChatGPT
+
+AppKit’s On-Ramp feature lets your users easily buy crypto with fiat—right inside your React Native app. With support for 100+ cryptocurrencies and global payment options, it helps users start transacting quickly and securely across multiple chains.
+​
+Configuration
+The On-Ramp feature is enabled by default. To customize or disable it:
+createAppKit({
+  projectId: 'YOUR_PROJECT_ID',
+  // ... other config options
+  features: {
+    onramp: true, // Optional - true by default
+  }
+});
+Set onramp: false to disable the feature.
+​
+Usage
+​
+Open the On-Ramp View
+Use the useAppKit hook to trigger the On-Ramp view programmatically:
+function OnRampButton() {
+  const { open } = useAppKit();
+
+  const handleOnRampPress = () => {
+    open({ view: 'OnRamp' });
+  };
+
+  return (
+    <Button
+      title="Buy Crypto"
+      onPress={handleOnRampPress}
+    />
+  );
+}
+​
+What Users Can Expect
+When users tap “Buy Crypto”, they’re guided to a clean, intuitive interface.
+They can:
+Choose their local fiat currency
+Pick the token they want to buy
+Enter the desired amount
+Select a payment method (credit card, bank transfer, etc.)
+Review all fees and exchange rates transparently
+After confirming, they’re securely redirected to the provider to complete the purchase.
+Once done, the crypto lands in their wallet—automatically.
+
+Email & Socials
+
+Open in ChatGPT
+
+AppKit enables passwordless Web3 onboarding and authentication, allowing your users interact with your application by creating a non-custodial wallet with just their emails or social network.
+Due to Safari’s strict third-party cookie policies, the SDK is not preserving sessions after the app is closed. Our team is working to solve this issue soon.
+Email and social wallets currently support EVM chains only. Support for additional chains (Solana, Bitcoin) will be available soon.
+​
+Integration
+​
+Update your Dashboard settings
+Go to your Dashboard project
+Open Dashboard and scroll down to Mobile Application IDs menu
+Add your iOS Bundle ID and/or your Android Package Name
+Changes might take some minutes to impact
+​
+Enable Email & Social Authentication
+To enable email and social authentication in your AppKit configuration, add the features option to your createAppKit call:
+export const appKit = createAppKit({
+  // other config...
+  features: {
+    email: true,
+    socials: ['email', 'google', 'x', 'discord', 'apple', 'facebook', 'github', 'farcaster'],
+    showWallets: true
+  }
+});
+email [boolean] : This boolean defines whether you want to enable email login. Default true
+socials [array] : This array contains the list of social platforms that you want to enable for user authentication. The platforms supported are Google, X, GitHub, Discord, Apple, Facebook and Farcaster. The default value of undefined displays everything. Set it to false to disable this feature. You can also pass an empty array to disable it.
+emailShowWallets [boolean] : This boolean defines whether you want to show the wallet options on the first connect screen. If this is false and socials are enabled, it will show a button that directs you to a new screen displaying the wallet options. Default true
+​
+User Flow
+Users will be able to connect to you application by simply using an email address. AppKit will send to them a One Time Password (OTP) to copy and paste in the modal, which will help to verify the user’s authenticity. This will create a non-custodial wallet for your user which will be available in any application that integrates AppKit and email login.
+For Social options, the One Time Password (OTP) is not sent.
+Eventually the user can optionally choose to move from a non-custodial wallet to a self-custodial one by pressing “Upgrade Wallet” on AppKit. This will open the (Reown Secure Site) that will walk your user through the upgrading process.
+One-Click Auth (SIWE)
+
+Open in ChatGPT
+
+​
+One-Click Auth
+One-Click Auth represents a key advancement within WalletConnect v2, streamlining the user authentication process in AppKit by enabling them to seamlessly connect with a wallet and sign a SIWE message with just one click.
+Connecting a wallet, proving control of an address with an off-chain signature, authorizing specific actions. These are the kinds of authorizations that can be encoded as “ReCaps”. ReCaps are permissions for a specific website or dapp that can be compactly encoded as a long string in the message you sign and translated by any wallet into a straight-forward one-sentence summary. WalletConnect uses permissions expressed as ReCaps to enable a One-Click Authentication.
+​
+Pre-requisites
+In order for One-Click Auth to work, you need to meet the following requirements:
+Enable SIWX in your AppKit configuration - One-Click Auth requires SIWX (Sign In With X) to be enabled in your AppKit setup.
+Configure EVM chains only - One-Click Auth currently supports EVM chains only. Make sure your AppKit networks configuration includes only EVM-compatible chains.
+Use Reown Authentication or set up a backend - You need to have a backend to communicate with. This backend will be used to generate a nonce, verify messages and handle sessions. More info here
+​
+How It Works
+When users connect their wallet with One-Click Auth enabled:
+The connection and SIWE message sign are done in a single step
+Your backend receives and verifies the signature
+The user is authenticated and ready to use your app
+​
+Related Documentation
+Reown Authentication - Required SIWX setup
+SIWX Custom - Advanced SIWX configuration options
+
+Sign In With X
+
+Open in ChatGPT
+
+​
+Introduction
+The Sign In With X feature enables decentralized applications (Dapps) to authenticate users seamlessly across multiple blockchain networks, such as Ethereum, Polygon or Solana. This feature allows developers using our SDK to implement authentication by having users sign a unique string message with their blockchain wallets. The Sign In With X feature is designed in accordance with the CAIP-122 standard, which establishes a chain-agnostic framework for blockchain-based authentication and authorization on off-chain services.
+​
+Getting Started
+SIWX works as a plugin system for AppKit and you are going to add the plugin in the AppKit configuration. There are some ways to implement the SIWX feature:
+Use Reown Authentication to manage the sessions in the Reown Dashboard
+Create a custom implementation to suit your specific requirements.
+To initialize the SIWX feature, you need to add the siwx parameter to the createAppKit function.
+​
+Reown Authentication
+Reown Authentication is a predefined implementation of the SIWX configuration plugin that uses the Cloud service to create and manage SIWX messages and sessions. With Reown Authentication, you will be able to see and control the sessions of your users using the Reown Dashboard.
+Read more about the Reown Authentication Implementation.
+​
+Custom Implementation
+DefaultSIWX is a scaffold implementation of the SIWX feature for quick custom integration. It offers pre-built components to get the feature running quickly with some custom adjustments. Additionally, the expected ` parameters can be configured to allow customization of the feature to suit your specific requirements.
+The defined interface must follow specific rules to make sure that AppKit can interact with it correctly. Read more about how to have your Custom Implementation.
+​
+SIWX Expected Behavior
+SIWX will prompt to get the user signature and verify his identity every time a connection happen;
+In case a SIWX session is already stored, the user will be automatically signed in and the prompt step will be skipped;
+If the user changes the connected network, SIWX will prompt to get the user signature and verify his identity again;
+If the user disconnects from the Dapp, SIWX will revoke the session and the user will need to sign in again.

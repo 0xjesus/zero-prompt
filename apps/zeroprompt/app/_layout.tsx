@@ -1,3 +1,9 @@
+import { Platform } from "react-native";
+
+// WalletConnect polyfills are loaded in index.js
+// keyvaluestorage is patched via Metro resolver to handle null values properly
+
+import { useState, useEffect } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -18,7 +24,6 @@ export default function RootLayout() {
                 <Stack.Screen name="home" />
                 <Stack.Screen name="models" />
                 <Stack.Screen name="docs" />
-                <Stack.Screen name="protocol" />
                 <Stack.Screen name="dashboard" />
                 <Stack.Screen name="x402" />
               </Stack>

@@ -381,6 +381,19 @@ export default function ModelSelectorModal({
     const [favorites, setFavorites] = useState<string[]>([]);
     const [recentModels, setRecentModels] = useState<string[]>([]);
 
+    // Defer heavy content render for snappier modal open
+    const [contentReady, setContentReady] = useState(false);
+
+    useEffect(() => {
+        if (visible) {
+            // Small delay to let modal animation complete before rendering heavy list
+            const timer = setTimeout(() => setContentReady(true), 50);
+            return () => clearTimeout(timer);
+        } else {
+            setContentReady(false);
+        }
+    }, [visible]);
+
     // Reputation tag filtering
     const [selectedTag, setSelectedTag] = useState<string | null>(null);
     const [tagModelIds, setTagModelIds] = useState<number[]>([]);
@@ -562,7 +575,7 @@ export default function ModelSelectorModal({
     return (
         <Modal
             visible={visible}
-            animationType={isMobile ? "slide" : "fade"}
+            animationType="none"
             transparent
             statusBarTranslucent={Platform.OS === 'android'}
             onRequestClose={onClose}
@@ -774,7 +787,12 @@ export default function ModelSelectorModal({
 
                     {/* Model List */}
                     <ScrollView style={styles.modelList} showsVerticalScrollIndicator={false}>
-                        {categories.favModels.length > 0 && activeCategory === 'all' && (
+                        {!contentReady ? (
+                            <View style={{ padding: 40, alignItems: 'center' }}>
+                                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Loading models...</Text>
+                            </View>
+                        ) : null}
+                        {contentReady && categories.favModels.length > 0 && activeCategory === 'all' && (
                             <CategorySection
                                 title="Favorites"
                                 icon={Star}
@@ -788,7 +806,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {categories.recentModelsList.length > 0 && activeCategory === 'all' && searchQuery === '' && (
+                        {contentReady && categories.recentModelsList.length > 0 && activeCategory === 'all' && searchQuery === '' && (
                             <CategorySection
                                 title="Recently Used"
                                 icon={Clock}
@@ -803,7 +821,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {(activeCategory === 'all' || activeCategory === 'image') && categories.imageModels.length > 0 && (
+                        {contentReady && (activeCategory === 'all' || activeCategory === 'image') && categories.imageModels.length > 0 && (
                             <CategorySection
                                 title="Image Generation"
                                 icon={PenTool}
@@ -818,7 +836,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {(activeCategory === 'all' || activeCategory === 'reasoning') && categories.reasoningModels.length > 0 && (
+                        {contentReady && (activeCategory === 'all' || activeCategory === 'reasoning') && categories.reasoningModels.length > 0 && (
                             <CategorySection
                                 title="Thinking Models"
                                 icon={Brain}
@@ -833,7 +851,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {(activeCategory === 'all' || activeCategory === 'vision') && categories.visionModels.length > 0 && (
+                        {contentReady && (activeCategory === 'all' || activeCategory === 'vision') && categories.visionModels.length > 0 && (
                             <CategorySection
                                 title="Vision Models"
                                 icon={Eye}
@@ -848,7 +866,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {(activeCategory === 'all' || activeCategory === 'chat') && (
+                        {contentReady && (activeCategory === 'all' || activeCategory === 'chat') && (
                             <CategorySection
                                 title="Chat Models"
                                 icon={Sparkles}
@@ -862,7 +880,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {filteredModels.length === 0 && (
+                        {contentReady && filteredModels.length === 0 && (
                             <View style={styles.emptyState}>
                                 <Search size={40} color="rgba(255,255,255,0.2)" />
                                 <Text style={styles.emptyText}>

@@ -2,7 +2,7 @@
   "name": "@zeroprompt/app",
   "version": "0.1.0",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "./entry.js",
   "scripts": {
     "start": "expo start",
     "start:web": "EXPO_USE_METRO_WORKSPACE_ROOT=1 npx env-cmd -x -f ../../.env expo start --web",
@@ -13,8 +13,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx}\""
   },
   "dependencies": {
-    "@noble/curves": "^2.0.1",
-    "@noble/hashes": "^1.8.0",
+    "@noble/curves": "1.9.1",
+    "@noble/hashes": "1.8.0",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/netinfo": "11.3.1",
     "@reown/appkit": "^1.8.14",
@@ -24,6 +24,7 @@
     "@wagmi/core": "^2.22.1",
     "@walletconnect/react-native-compat": "^2.23.0",
     "babel-plugin-module-resolver": "^5.0.2",
+    "buffer": "^6.0.3",
     "ethers": "^6.15.0",
     "expo": "^51.0.39",
     "expo-application": "~5.9.1",
@@ -46,6 +47,7 @@
     "react-native-screens": "3.31.1",
     "react-native-svg": "15.2.0",
     "react-native-web": "~0.19.10",
+    "text-encoding": "^0.7.0",
     "thirdweb": "^5.0.0",
     "use-sync-external-store": "^1.6.0",
     "viem": "^2.40.3",

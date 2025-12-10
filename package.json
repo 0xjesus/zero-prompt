@@ -22,9 +22,13 @@
     "dotenv-cli": "^11.0.0"
   },
   "dependencies": {
-    "@metamask/sdk": "^0.33.1",
+    "@noble/curves": "1.9.1",
+    "@noble/hashes": "1.8.0",
     "@radix-ui/react-slot": "^1.2.3",
-    "ox": "^0.9.6",
-    "porto": "^0.2.37"
+    "ox": "0.9.6",
+    "react-native": "0.74.5"
+  },
+  "overrides": {
+    "porto": "npm:empty-npm-package@1.0.0"
   }
 }

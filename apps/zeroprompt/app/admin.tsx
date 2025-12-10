@@ -264,7 +264,7 @@ export default function AdminScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.connectButton, isConnecting && styles.buttonDisabled]}
-            onPress={openWalletModal}
+            onPress={() => openWalletModal()}
             disabled={isConnecting}
           >
             {isConnecting ? (
