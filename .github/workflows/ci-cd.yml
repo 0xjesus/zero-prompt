@@ -58,18 +58,20 @@ jobs:
             git fetch origin main && git reset --hard origin/main
 
             echo "📦 Installing dependencies..."
-            npm ci --legacy-peer-deps
+            # Limit Node memory to prevent OOM kills
+            export NODE_OPTIONS="--max-old-space-size=1536"
+            npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
             echo "🗄️ Running Prisma generate & migrate..."
             npm run db:generate -w apps/api
             npm run db:migrate -w apps/api
 
             echo "🔨 Building API..."
-            npm run build -w apps/api
+            NODE_OPTIONS="--max-old-space-size=1536" npm run build -w apps/api
 
             echo "🌐 Building frontend..."
             cd apps/zeroprompt
-            EXPO_PUBLIC_API_URL=$API_URL npx expo export --platform web --output-dir dist
+            NODE_OPTIONS="--max-old-space-size=1536" EXPO_PUBLIC_API_URL=$API_URL npx expo export --platform web --output-dir dist
 
             echo "🔍 Injecting SEO meta tags..."
             bash scripts/inject-seo.sh
