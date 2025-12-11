@@ -58,28 +58,19 @@ jobs:
             git fetch origin main && git reset --hard origin/main
 
             echo "📦 Installing dependencies..."
-            # Limit memory to prevent OOM kills
-            export NODE_OPTIONS="--max-old-space-size=512"
-
-            # Install root dependencies only (not workspaces)
-            npm install --legacy-peer-deps --no-audit --no-fund --ignore-scripts --workspaces=false || true
-
-            # Install API dependencies separately
-            cd apps/api && npm install --legacy-peer-deps --no-audit --no-fund && cd ../..
-
-            # Skip zeroprompt native deps on server (not needed for web build)
-            cd apps/zeroprompt && npm install --legacy-peer-deps --no-audit --no-fund --omit=optional || true && cd ../..
+            # Use npm install (less memory than npm ci) with offline cache
+            npm install --legacy-peer-deps --prefer-offline || npm install --legacy-peer-deps
 
             echo "🗄️ Running Prisma generate & migrate..."
             npm run db:generate -w apps/api
             npm run db:migrate -w apps/api
 
             echo "🔨 Building API..."
-            NODE_OPTIONS="--max-old-space-size=1536" npm run build -w apps/api
+            npm run build -w apps/api
 
             echo "🌐 Building frontend..."
             cd apps/zeroprompt
-            NODE_OPTIONS="--max-old-space-size=1536" EXPO_PUBLIC_API_URL=$API_URL npx expo export --platform web --output-dir dist
+            EXPO_PUBLIC_API_URL=$API_URL npx expo export --platform web --output-dir dist
 
             echo "🔍 Injecting SEO meta tags..."
             bash scripts/inject-seo.sh
