@@ -17,6 +17,10 @@ import ModelSelectorModal from './ModelSelectorModal';
 // Breakpoint for desktop layout
 const DESKTOP_BREAKPOINT = 768;
 
+// On native (Android/iOS), default to AVAX payments since eth_signTypedData_v4
+// doesn't work reliably with WalletConnect. AVAX uses eth_sendTransaction which works.
+const DEFAULT_PAYMENT_METHOD: 'USDC' | 'AVAX' = Platform.OS === 'web' ? 'USDC' : 'AVAX';
+
 const MERCHANT_ADDRESS = getAddress(RAW_MERCHANT_ADDRESS);
 
 // Markdown styles for AI responses
@@ -520,7 +524,7 @@ const ModelBattle = ({ isConnected, address, openWalletModal, models, theme }: D
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
 
   // Dynamic quote state
   const [quote, setQuote] = useState<any>(null);
@@ -903,7 +907,7 @@ const AIConsensus = ({ isConnected, address, openWalletModal, models, theme }: D
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
 
   // Dynamic quote state
   const [quote, setQuote] = useState<any>(null);
@@ -1329,7 +1333,7 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('USDC');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(DEFAULT_PAYMENT_METHOD);
 
   // Dynamic quote state
   const [quote, setQuote] = useState<any>(null);

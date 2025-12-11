@@ -34,6 +34,8 @@ type AuthContextType = {
   refreshUser: () => void;
   clearMigratedChats: () => void;
   nativeProvider?: any; // Provider for native wallet transactions
+  appKitReady: boolean; // Whether AppKit/wallet system is initialized
+  storageReady: boolean; // Whether async storage is ready (native only)
 };
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -213,9 +215,20 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
     modalOpen: false, // Track if AppKit modal is open
   });
 
-  // Memoize the callback to prevent infinite loops
+  // Memoize the callback to prevent infinite loops - only update if values actually changed
   const handleWalletData = useCallback((data: any) => {
-    setWalletData(data);
+    setWalletData(prev => {
+      // Compare key values to avoid unnecessary updates
+      if (
+        prev.address === data.address &&
+        prev.isConnected === data.isConnected &&
+        prev.isConnecting === data.isConnecting &&
+        prev.modalOpen === data.modalOpen
+      ) {
+        return prev; // No change, return same reference
+      }
+      return data;
+    });
   }, []);
 
   // Extract values
@@ -921,6 +934,8 @@ const AuthProviderInner = ({ children }: { children: React.ReactNode }) => {
         refreshUser,
         clearMigratedChats,
         nativeProvider, // Provider for native transactions
+        appKitReady, // Expose AppKit ready state for routes that need it
+        storageReady, // Expose storage ready state
       }}
     >
       {/* Conditionally render wallet consumer to get hook data only when AppKit is ready */}
@@ -944,6 +959,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Use full auth provider for web and native with wallet support
   // AuthProviderInner uses wagmi hooks which now work on all platforms via Web3Provider
   return <AuthProviderInner>{children}</AuthProviderInner>;
+};
+
+// Export a hook to check if wallet system is fully ready (for loading screens)
+export const useWalletReady = () => {
+  const appKitReady = useAppKitReady();
+  const { user, guestId } = useAuth();
+  // Ready when AppKit is initialized AND we have either a user or guest session
+  return appKitReady && (user !== null || guestId !== null);
 };
 
 export const useAuth = () => useContext(AuthContext);

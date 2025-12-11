@@ -16,4 +16,5 @@ export const AVALANCHE_CONFIG = {
 export const VAULT_ADDRESS = "0x773c9849F15Ac7484232767536Fe5495B5E231e9";
 
 // Merchant address for x402 payments (must match backend X402_MERCHANT_ADDRESS)
-export const MERCHANT_ADDRESS = process.env.EXPO_PUBLIC_X402_MERCHANT_ADDRESS || "0x209F0baCA0c23edc57881B26B68FC4148123B039";
+// IMPORTANT: Hardcoded to prevent env var issues on Android
+export const MERCHANT_ADDRESS = "0x209F0baCA0c23edc57881B26B68FC4148123B039";

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   StyleSheet, Platform, Image, useWindowDimensions, ActivityIndicator, Modal
@@ -27,7 +27,16 @@ import ProtocolDemos from '../../components/ProtocolDemos';
 // ============================================================================
 // CONFIG - x402 EIP-3009 (Avalanche Only)
 // ============================================================================
-const MERCHANT_ADDRESS = getAddress(RAW_MERCHANT_ADDRESS);
+// Safely get merchant address - on Android env vars may not load correctly
+let MERCHANT_ADDRESS: `0x${string}`;
+try {
+  MERCHANT_ADDRESS = getAddress(RAW_MERCHANT_ADDRESS);
+  console.log("[x402] MERCHANT_ADDRESS:", MERCHANT_ADDRESS);
+} catch (e) {
+  console.error("[x402] Failed to parse MERCHANT_ADDRESS:", RAW_MERCHANT_ADDRESS, e);
+  // Fallback to known good address
+  MERCHANT_ADDRESS = getAddress("0x209F0baCA0c23edc57881B26B68FC4148123B039");
+}
 
 // Avalanche config
 const AVALANCHE_CONFIG = {
@@ -176,10 +185,6 @@ export default function ProtocolPage() {
   const isMobile = width < 600;
 
   // Wallet - Use the same auth system as /chat
-  const { address, isConnected } = useAccount();
-  const { signTypedDataAsync } = useSignTypedData();
-  const { sendTransactionAsync } = useSendTransaction();
-  const [showWalletMenu, setShowWalletMenu] = useState(false);
   const {
     openWalletModal,
     isConnecting,
@@ -189,8 +194,22 @@ export default function ProtocolPage() {
     migratedChats,
     clearMigratedChats,
     logout,
-    nativeProvider
+    nativeProvider,
+    appKitReady,
   } = useAuth();
+
+  // Get wallet state from wagmi hooks (these use AppKit on native via our shim)
+  const { address, isConnected } = useAccount();
+  const { signTypedDataAsync } = useSignTypedData();
+  const { sendTransactionAsync } = useSendTransaction();
+  const [showWalletMenu, setShowWalletMenu] = useState(false);
+
+  // Debug: Log wallet state on Android
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      console.log('[x402] Wallet state:', { appKitReady, address: address?.slice(0, 10), isConnected });
+    }
+  }, [appKitReady, address, isConnected]);
 
   // Payment method: 'usdc' or 'native'
   const [paymentMethod, setPaymentMethod] = useState<'usdc' | 'native'>('native');
@@ -208,6 +227,10 @@ export default function ProtocolPage() {
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Refs for scrolling
+  const scrollViewRef = useRef<ScrollView>(null);
+  const apiConsoleSectionY = useRef<number>(0);
 
   // Quote from backend (accurate pricing)
   const [quote, setQuote] = useState<any>(null);
@@ -1054,7 +1077,11 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
+        showsVerticalScrollIndicator={false}
+      >
 
         {/* ============================================================
             HERO SECTION - Mobile Optimized
@@ -1106,6 +1133,9 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
             <TouchableOpacity style={[styles.primaryCTA, isMobile && styles.primaryCTAMobile]} onPress={() => {
               if (Platform.OS === 'web') {
                 document.getElementById('api-console')?.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                // Native: scroll to saved Y position
+                scrollViewRef.current?.scrollTo({ y: apiConsoleSectionY.current, animated: true });
               }
             }}>
               <Play size={isMobile ? 18 : 20} color="#000" />
@@ -1199,32 +1229,35 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         {/* ============================================================
             x402 EXPLAINED
         ============================================================ */}
-        <View style={styles.section}>
-          <View style={styles.x402Banner}>
-            <View style={styles.x402BannerLeft}>
+        <View style={[styles.section, isMobile && styles.sectionMobile]}>
+          <View style={[styles.x402Banner, isMobile && styles.x402BannerMobile]}>
+            <View style={[styles.x402BannerLeft, isMobile && styles.x402BannerLeftMobile]}>
               <Text style={styles.x402BannerLabel}>PAYMENT PROTOCOL</Text>
-              <Text style={styles.x402BannerTitle}>Powered by x402 + EIP-3009</Text>
-              <Text style={styles.x402BannerDesc}>
-                x402 is the HTTP 402 "Payment Required" standard for machine-to-machine payments.
-                Combined with EIP-3009 TransferWithAuthorization, it enables gasless USDC payments on Avalanche.
+              <Text style={[styles.x402BannerTitle, isMobile && styles.x402BannerTitleMobile]}>
+                {isMobile ? 'x402 + EIP-3009' : 'Powered by x402 + EIP-3009'}
+              </Text>
+              <Text style={[styles.x402BannerDesc, isMobile && styles.x402BannerDescMobile]}>
+                {isMobile
+                  ? 'HTTP 402 standard for gasless USDC payments on Avalanche.'
+                  : 'x402 is the HTTP 402 "Payment Required" standard for machine-to-machine payments. Combined with EIP-3009 TransferWithAuthorization, it enables gasless USDC payments on Avalanche.'}
               </Text>
             </View>
-            <View style={styles.x402BannerRight}>
+            <View style={[styles.x402BannerRight, isMobile && styles.x402BannerRightMobile]}>
               <View style={styles.x402Feature}>
-                <Shield size={20} color="#8B5CF6" />
-                <Text style={styles.x402FeatureText}>Trustless verification</Text>
+                <Shield size={isMobile ? 16 : 20} color="#8B5CF6" />
+                <Text style={[styles.x402FeatureText, isMobile && styles.x402FeatureTextMobile]}>Trustless</Text>
               </View>
               <View style={styles.x402Feature}>
-                <Globe size={20} color="#8B5CF6" />
-                <Text style={styles.x402FeatureText}>Avalanche C-Chain</Text>
+                <Globe size={isMobile ? 16 : 20} color="#8B5CF6" />
+                <Text style={[styles.x402FeatureText, isMobile && styles.x402FeatureTextMobile]}>Avalanche</Text>
               </View>
               <View style={styles.x402Feature}>
-                <Zap size={20} color="#00FF41" />
-                <Text style={[styles.x402FeatureText, { color: '#00FF41' }]}>⚡ Gas fees sponsored</Text>
+                <Zap size={isMobile ? 16 : 20} color="#00FF41" />
+                <Text style={[styles.x402FeatureText, isMobile && styles.x402FeatureTextMobile, { color: '#00FF41' }]}>Gas Free</Text>
               </View>
               <View style={styles.x402Feature}>
-                <DollarSign size={20} color="#2775CA" />
-                <Text style={[styles.x402FeatureText, { color: '#2775CA' }]}>Pay with USDC</Text>
+                <DollarSign size={isMobile ? 16 : 20} color="#2775CA" />
+                <Text style={[styles.x402FeatureText, isMobile && styles.x402FeatureTextMobile, { color: '#2775CA' }]}>USDC</Text>
               </View>
             </View>
           </View>
@@ -1233,12 +1266,15 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         {/* ============================================================
             USE CASE DEMOS - Battle, Consensus, Gallery
         ============================================================ */}
-        <View style={styles.section} nativeID="demos">
+        <View style={[styles.section, isMobile && styles.sectionMobile]} nativeID="demos">
           <Text style={styles.sectionLabel}>USE CASES</Text>
-          <Text style={styles.sectionTitle}>300+ Models, Infinite Possibilities</Text>
-          <Text style={styles.sectionSubtitle}>
-            With x402 you get instant access to every major AI model. One payment, multiple models.{'\n'}
-            Try these demos to see the power of permissionless AI.
+          <Text style={[styles.sectionTitle, isMobile && styles.sectionTitleMobile]}>
+            {isMobile ? '300+ AI Models' : '300+ Models, Infinite Possibilities'}
+          </Text>
+          <Text style={[styles.sectionSubtitle, isMobile && styles.sectionSubtitleMobile]}>
+            {isMobile
+              ? 'One payment, multiple models. Try these demos.'
+              : `With x402 you get instant access to every major AI model. One payment, multiple models.\nTry these demos to see the power of permissionless AI.`}
           </Text>
 
           <View style={styles.demosWrapper}>
@@ -1255,12 +1291,19 @@ print('AI Response:', result['result'])`, [modelId, prompt]);
         {/* ============================================================
             INTERACTIVE DEMO (Single Model)
         ============================================================ */}
-        <View style={styles.section} nativeID="api-console">
+        <View
+          style={[styles.section, isMobile && styles.sectionMobile]}
+          nativeID="api-console"
+          onLayout={(e) => { apiConsoleSectionY.current = e.nativeEvent.layout.y; }}
+        >
           <Text style={styles.sectionLabel}>SINGLE MODEL DEMO</Text>
-          <Text style={styles.sectionTitle}>Test the x402 Payment Flow</Text>
-          <Text style={styles.sectionSubtitle}>
-            This console demonstrates a real x402 payment on Avalanche Mainnet.{'\n'}
-            Watch the complete flow: wallet → blockchain → API verification → AI response.
+          <Text style={[styles.sectionTitle, isMobile && styles.sectionTitleMobile]}>
+            {isMobile ? 'Test x402 Payment' : 'Test the x402 Payment Flow'}
+          </Text>
+          <Text style={[styles.sectionSubtitle, isMobile && styles.sectionSubtitleMobile]}>
+            {isMobile
+              ? 'Real x402 payment on Avalanche Mainnet.'
+              : `This console demonstrates a real x402 payment on Avalanche Mainnet.\nWatch the complete flow: wallet → blockchain → API verification → AI response.`}
           </Text>
 
           {/* Network Notice */}
@@ -2615,9 +2658,19 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(139, 92, 246, 0.2)',
     gap: 32
   },
+  x402BannerMobile: {
+    flexDirection: 'column',
+    padding: 16,
+    gap: 16,
+    borderRadius: 12
+  },
   x402BannerLeft: {
     flex: 2,
     minWidth: 280
+  },
+  x402BannerLeftMobile: {
+    flex: 0,
+    minWidth: 0
   },
   x402BannerLabel: {
     color: '#8B5CF6',
@@ -2632,16 +2685,32 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 12
   },
+  x402BannerTitleMobile: {
+    fontSize: 18,
+    marginBottom: 8
+  },
   x402BannerDesc: {
     color: '#888',
     fontSize: 15,
     lineHeight: 24
+  },
+  x402BannerDescMobile: {
+    fontSize: 13,
+    lineHeight: 20
   },
   x402BannerRight: {
     flex: 1,
     minWidth: 200,
     gap: 12,
     justifyContent: 'center'
+  },
+  x402BannerRightMobile: {
+    flex: 0,
+    minWidth: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-start'
   },
   x402Feature: {
     flexDirection: 'row',
@@ -2651,6 +2720,9 @@ const styles = StyleSheet.create({
   x402FeatureText: {
     color: '#aaa',
     fontSize: 14
+  },
+  x402FeatureTextMobile: {
+    fontSize: 12
   },
 
   // Footer

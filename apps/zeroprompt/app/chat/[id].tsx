@@ -569,12 +569,16 @@ const SourceList = ({ sources, theme, webSearchType }: any) => {
     );
 };
 
+// Global cache for history to persist across route changes
+let historyCache: any[] = [];
+
 const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, startNewChat, isConnecting, isAuthenticating, token, guestId, getHeaders, router, currentBalance, logout, onOpenGallery, onOpenDepositModal }: any) => {
   const { width, height } = useWindowDimensions();
   const isMobile = width < 600;
   const sidebarWidth = isDesktop ? 280 : (isMobile ? Math.min(width * 0.85, 320) : 300);
   const slideAnim = useRef(new Animated.Value(isDesktop ? 0 : -sidebarWidth)).current;
-  const [history, setHistory] = useState<any[]>([]);
+  // Initialize from cache to prevent flash on route change
+  const [history, setHistory] = useState<any[]>(historyCache);
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -595,16 +599,33 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
     }
   }, [isOpen, isDesktop, sidebarWidth]);
 
-  const loadHistory = () => {
-      if (user || guestId) {
+  const loadHistoryRef = useRef(false);
+
+  const loadHistory = useCallback(() => {
+      if ((user || guestId) && !loadHistoryRef.current) {
+          loadHistoryRef.current = true;
           fetch(`${API_URL}/llm/history`, { headers: getHeaders() })
-          .then(r => r.json()).then(data => setHistory(data.conversations || [])).catch(e => console.error(e));
+          .then(r => r.json())
+          .then(data => {
+              const newConversations = data.conversations || [];
+              // Only update if data actually changed (compare IDs)
+              setHistory(prev => {
+                  const prevIds = prev.map(h => h.id).join(',');
+                  const newIds = newConversations.map((h: any) => h.id).join(',');
+                  if (prevIds === newIds) return prev;
+                  // Update global cache
+                  historyCache = newConversations;
+                  return newConversations;
+              });
+          })
+          .catch(e => console.error(e))
+          .finally(() => { loadHistoryRef.current = false; });
       }
-  };
+  }, [user, guestId, getHeaders]);
 
   useEffect(() => {
       if (isOpen) loadHistory();
-  }, [isOpen, user, guestId, token]);
+  }, [isOpen, user, guestId, token, loadHistory]);
 
   const confirmDelete = (item: {id: string, title: string}) => {
       setItemToDelete(item);
@@ -620,7 +641,11 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
               method: 'DELETE',
               headers: getHeaders()
           });
-          setHistory(prev => prev.filter(h => h.id !== itemToDelete.id));
+          setHistory(prev => {
+              const filtered = prev.filter(h => h.id !== itemToDelete.id);
+              historyCache = filtered; // Update cache on delete
+              return filtered;
+          });
       } catch (e) {
           console.error("Failed to delete conversation", e);
       }
@@ -787,57 +812,45 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ gap: 8, marginBottom: 12 }}>
+            <View style={{ gap: 4, marginBottom: 8 }}>
               {/* Home Link */}
               <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(0, 255, 65, 0.1)', borderWidth: 1, borderColor: 'rgba(0, 255, 65, 0.3)', borderRadius: 10 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(0, 255, 65, 0.1)', borderWidth: 1, borderColor: 'rgba(0, 255, 65, 0.3)', borderRadius: 6 }}
                 onPress={() => { router.push('/home'); if(!isDesktop) onClose(); }}
               >
-                <Home color="#00FF41" size={18} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#00FF41', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>HOME</Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Landing page</Text>
-                </View>
-                <ChevronRight color="#00FF41" size={14} />
+                <Home color="#00FF41" size={14} />
+                <Text style={{ color: '#00FF41', fontSize: 10, fontWeight: '600', fontFamily: FONT_MONO, flex: 1 }}>HOME</Text>
+                <ChevronRight color="#00FF41" size={12} />
               </TouchableOpacity>
 
               {/* API x402 Link */}
               <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(139, 92, 246, 0.1)', borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.3)', borderRadius: 10 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(139, 92, 246, 0.1)', borderWidth: 1, borderColor: 'rgba(139, 92, 246, 0.3)', borderRadius: 6 }}
                 onPress={() => { router.push('/x402'); if(!isDesktop) onClose(); }}
               >
-                <Code color="#8B5CF6" size={18} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#8B5CF6', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>API_x402</Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Pay-per-request AI</Text>
-                </View>
-                <ChevronRight color="#8B5CF6" size={14} />
+                <Code color="#8B5CF6" size={14} />
+                <Text style={{ color: '#8B5CF6', fontSize: 10, fontWeight: '600', fontFamily: FONT_MONO, flex: 1 }}>API_x402</Text>
+                <ChevronRight color="#8B5CF6" size={12} />
               </TouchableOpacity>
 
               {/* AI Reputation Link */}
               <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(255, 193, 7, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 193, 7, 0.3)', borderRadius: 10 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255, 193, 7, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 193, 7, 0.3)', borderRadius: 6 }}
                 onPress={() => { router.push('/reputation'); if(!isDesktop) onClose(); }}
               >
-                <Star color="#FFC107" size={18} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#FFC107', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>AI_REPUTATION</Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>Rate AI models</Text>
-                </View>
-                <ChevronRight color="#FFC107" size={14} />
+                <Star color="#FFC107" size={14} />
+                <Text style={{ color: '#FFC107', fontSize: 10, fontWeight: '600', fontFamily: FONT_MONO, flex: 1 }}>AI_REPUTATION</Text>
+                <ChevronRight color="#FFC107" size={12} />
               </TouchableOpacity>
 
               {/* Image Gallery Button */}
               <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: 'rgba(233, 30, 99, 0.1)', borderWidth: 1, borderColor: 'rgba(233, 30, 99, 0.3)', borderRadius: 10 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(233, 30, 99, 0.1)', borderWidth: 1, borderColor: 'rgba(233, 30, 99, 0.3)', borderRadius: 6 }}
                 onPress={() => { onOpenGallery(); if(!isDesktop) onClose(); }}
               >
-                <ImageIcon color="#E91E63" size={18} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: '#E91E63', fontSize: 12, fontWeight: '600', fontFamily: FONT_MONO }}>IMG_GALLERY</Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: FONT_MONO }}>View generated images</Text>
-                </View>
-                <ChevronRight color="#E91E63" size={14} />
+                <ImageIcon color="#E91E63" size={14} />
+                <Text style={{ color: '#E91E63', fontSize: 10, fontWeight: '600', fontFamily: FONT_MONO, flex: 1 }}>IMG_GALLERY</Text>
+                <ChevronRight color="#E91E63" size={12} />
               </TouchableOpacity>
             </View>
           )}
@@ -1392,6 +1405,160 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
   );
 };
 
+// Generated Image Card with Download/Share buttons
+const GeneratedImageCard = ({ imgUrl, idx, total, theme }: { imgUrl: string, idx: number, total: number, theme: any }) => {
+    const [downloading, setDownloading] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
+
+    const handleDownload = async () => {
+        setDownloading(true);
+        try {
+            if (Platform.OS === 'web') {
+                const response = await fetch(imgUrl);
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = `zeroprompt-image-${Date.now()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(blobUrl);
+                setShowSuccess(true);
+                setTimeout(() => setShowSuccess(false), 2000);
+            } else {
+                // On native, open in browser to allow user to save
+                await Linking.openURL(imgUrl);
+                setShowSuccess(true);
+                setTimeout(() => setShowSuccess(false), 2000);
+            }
+        } catch (err) {
+            console.error('Download failed:', err);
+            if (Platform.OS === 'web') {
+                window.open(imgUrl, '_blank');
+            }
+        } finally {
+            setDownloading(false);
+        }
+    };
+
+    const handleShare = async () => {
+        if (Platform.OS === 'web') {
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: 'ZeroPrompt Generated Image',
+                        text: 'Check out this AI-generated image!',
+                        url: imgUrl
+                    });
+                } catch (err) {
+                    // User cancelled
+                }
+            } else {
+                await navigator.clipboard.writeText(imgUrl);
+                Alert.alert('Copied', 'Image URL copied to clipboard!');
+            }
+        } else {
+            try {
+                await Share.share({
+                    message: `Check out this AI-generated image!\n\n${imgUrl}`,
+                    url: imgUrl
+                });
+            } catch (err) {
+                // User cancelled
+            }
+        }
+    };
+
+    return (
+        <View style={{
+            borderRadius: 16,
+            overflow: 'hidden',
+            backgroundColor: '#0a0a0a',
+            borderWidth: 1,
+            borderColor: 'rgba(0, 255, 65, 0.2)',
+            // @ts-ignore
+            boxShadow: Platform.OS === 'web' ? '0 8px 32px rgba(0, 0, 0, 0.4)' : undefined
+        }}>
+            <Image
+                source={{ uri: imgUrl }}
+                style={{
+                    width: '100%',
+                    height: 400,
+                    resizeMode: 'contain',
+                    backgroundColor: '#0a0a0a'
+                }}
+            />
+            <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: 12,
+                backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                borderTopWidth: 1,
+                borderTopColor: 'rgba(255,255,255,0.05)'
+            }}>
+                <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                    <PenTool size={14} color={theme.primary} />
+                    <Text style={{color: theme.secondary, fontSize: 12, fontFamily: FONT_MONO}}>
+                        Generated {total > 1 ? `${idx + 1}/${total}` : 'Image'}
+                    </Text>
+                </View>
+                <View style={{flexDirection: 'row', gap: 8}}>
+                    <TouchableOpacity
+                        onPress={handleShare}
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: 'rgba(139, 92, 246, 0.3)'
+                        }}
+                    >
+                        <ExternalLink size={14} color="#8B5CF6" />
+                        <Text style={{color: '#8B5CF6', fontSize: 12, fontWeight: '600'}}>Share</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={handleDownload}
+                        disabled={downloading}
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            backgroundColor: showSuccess ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 255, 65, 0.15)',
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: showSuccess ? 'rgba(16, 185, 129, 0.3)' : 'rgba(0, 255, 65, 0.3)',
+                            opacity: downloading ? 0.6 : 1
+                        }}
+                    >
+                        {downloading ? (
+                            <ActivityIndicator size="small" color="#00FF41" />
+                        ) : showSuccess ? (
+                            <Check size={14} color="#10B981" />
+                        ) : (
+                            <Download size={14} color="#00FF41" />
+                        )}
+                        <Text style={{
+                            color: showSuccess ? '#10B981' : '#00FF41',
+                            fontSize: 12,
+                            fontWeight: '600'
+                        }}>
+                            {downloading ? 'Saving...' : showSuccess ? 'Saved!' : 'Download'}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+    );
+};
+
 const ResponseContent = ({ content, reasoning, sources, theme, isLoading, attachmentType, attachmentUrl, webSearchType, generatedImages }: any) => {
     // Epic code block styles
     const markdownStyles = {
@@ -1676,58 +1843,7 @@ const ResponseContent = ({ content, reasoning, sources, theme, isLoading, attach
                     gap: 12
                 }}>
                     {generatedImages.map((imgUrl: string, idx: number) => (
-                        <View key={idx} style={{
-                            borderRadius: 16,
-                            overflow: 'hidden',
-                            backgroundColor: '#0a0a0a',
-                            borderWidth: 1,
-                            borderColor: 'rgba(0, 255, 65, 0.2)',
-                            // @ts-ignore
-                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)'
-                        }}>
-                            <Image
-                                source={{ uri: imgUrl }}
-                                style={{
-                                    width: '100%',
-                                    height: 400,
-                                    resizeMode: 'contain',
-                                    backgroundColor: '#0a0a0a'
-                                }}
-                            />
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: 12,
-                                backgroundColor: 'rgba(0, 0, 0, 0.5)'
-                            }}>
-                                <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-                                    <PenTool size={14} color={theme.primary} />
-                                    <Text style={{color: theme.secondary, fontSize: 12}}>
-                                        Generated Image {generatedImages.length > 1 ? `${idx + 1}/${generatedImages.length}` : ''}
-                                    </Text>
-                                </View>
-                                <TouchableOpacity
-                                    onPress={() => {
-                                        if (Platform.OS === 'web') {
-                                            window.open(imgUrl, '_blank');
-                                        }
-                                    }}
-                                    style={{
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        gap: 6,
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        backgroundColor: 'rgba(255,255,255,0.1)',
-                                        borderRadius: 8
-                                    }}
-                                >
-                                    <ExternalLink size={12} color="#fff" />
-                                    <Text style={{color: '#fff', fontSize: 11}}>Open</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
+                        <GeneratedImageCard key={idx} imgUrl={imgUrl} idx={idx} total={generatedImages.length} theme={theme} />
                     ))}
                 </View>
             )}
@@ -2830,6 +2946,7 @@ export default function ChatScreen() {
                                         content: msg.content,
                                         reasoning: msg.metadata?.reasoning || '',
                                         sources: msg.metadata?.sources || [],
+                                        generatedImages: msg.metadata?.generatedImages || [],
                                         status: 'done',
                                         attachmentUrl: msg.attachmentUrl,
                                         attachmentType: msg.attachmentType
@@ -2847,6 +2964,7 @@ export default function ChatScreen() {
                                             content: msg.content,
                                             reasoning: msg.metadata?.reasoning || '',
                                             sources: msg.metadata?.sources || [],
+                                            generatedImages: msg.metadata?.generatedImages || [],
                                             status: 'done',
                                             attachmentUrl: msg.attachmentUrl,
                                             attachmentType: msg.attachmentType
@@ -2856,17 +2974,23 @@ export default function ChatScreen() {
                                 } else {
                                     // Orphan assistant message (shouldn't happen often, but fallback to standard display)
                                     // Or if it follows another assistant message but we decided not to group?
-                                    // Actually, if we have Ass A then Ass B, and Ass A wasn't grouped (why?), 
+                                    // Actually, if we have Ass A then Ass B, and Ass A wasn't grouped (why?),
                                     // Logic above:
                                     // 1. User -> Push User.
                                     // 2. Ass A -> Prev is User. Create Group [A]. Push Group.
                                     // 3. Ass B -> Prev is Group [A]. Add B to Group.
                                     // This logic covers it!
                                     // What if history starts with Assistant? (e.g. "Hello how can I help?")
-                                    groupedMessages.push({ ...msg });
+                                    groupedMessages.push({
+                                        ...msg,
+                                        generatedImages: msg.metadata?.generatedImages || []
+                                    });
                                 }
                             } else {
-                                groupedMessages.push({ ...msg });
+                                groupedMessages.push({
+                                    ...msg,
+                                    generatedImages: msg.metadata?.generatedImages || []
+                                });
                             }
                         });
                         setMessages(groupedMessages);

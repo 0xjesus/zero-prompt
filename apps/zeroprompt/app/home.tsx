@@ -73,6 +73,7 @@ export default function HomePage() {
     const { width } = useWindowDimensions();
     const isDesktop = width > 1024;
     const isTablet = width > 768;
+    const isMobile = width < 600;
     const containerPadding = isDesktop ? 80 : isTablet ? 40 : 20;
 
     const { theme } = useTheme();
@@ -128,64 +129,66 @@ export default function HomePage() {
                     position: 'relative',
                     zIndex: 10
                 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 6 : 12 }}>
                         <Image
                             source={LOGOS.zeroprompt}
-                            style={{ width: 44, height: 44 }}
+                            style={{ width: isMobile ? 32 : 44, height: isMobile ? 32 : 44 }}
                             resizeMode="contain"
                         />
-                        <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>
-                            ZeroPrompt
-                        </Text>
+                        {!isMobile && (
+                            <Text style={{ color: '#fff', fontSize: 24, fontWeight: '900' }}>
+                                ZeroPrompt
+                            </Text>
+                        )}
                     </View>
 
                     {/* Nav Links */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: isMobile ? 4 : 8 }}>
                         <TouchableOpacity
                             onPress={() => router.push('/chat/new')}
                             style={{
-                                padding: 10,
+                                padding: isMobile ? 8 : 10,
                                 borderRadius: 10,
                                 backgroundColor: 'rgba(255,255,255,0.1)',
                             }}
                         >
-                            <MessageSquare size={20} color="#fff" />
+                            <MessageSquare size={isMobile ? 18 : 20} color="#fff" />
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={() => router.push('/x402')}
                             style={{
-                                padding: 10,
+                                padding: isMobile ? 8 : 10,
                                 borderRadius: 10,
                                 backgroundColor: 'rgba(255,255,255,0.1)',
                             }}
                         >
-                            <DollarSign size={20} color="#fff" />
+                            <DollarSign size={isMobile ? 18 : 20} color="#fff" />
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={() => router.push('/reputation')}
                             style={{
-                                padding: 10,
+                                padding: isMobile ? 8 : 10,
                                 borderRadius: 10,
                                 backgroundColor: 'rgba(255,255,255,0.1)',
                             }}
                         >
-                            <Trophy size={20} color="#fff" />
+                            <Trophy size={isMobile ? 18 : 20} color="#fff" />
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={navigateToChat}
                             style={{
                                 backgroundColor: COLORS.neonGreen,
-                                paddingHorizontal: 24,
-                                paddingVertical: 12,
+                                paddingHorizontal: isMobile ? 12 : 24,
+                                paddingVertical: isMobile ? 8 : 12,
                                 borderRadius: 10,
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                gap: 8,
-                                marginLeft: 8,
+                                gap: isMobile ? 4 : 8,
+                                marginLeft: isMobile ? 4 : 8,
                             }}
                         >
-                            <Text style={{ color: '#000', fontWeight: '700' }}>Launch App</Text>
-                            <ArrowRight size={18} color="#000" />
+                            {!isMobile && <Text style={{ color: '#000', fontWeight: '700' }}>Launch App</Text>}
+                            <ArrowRight size={isMobile ? 16 : 18} color="#000" />
                         </TouchableOpacity>
                     </View>
                 </View>

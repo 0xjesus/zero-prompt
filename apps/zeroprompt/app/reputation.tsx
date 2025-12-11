@@ -981,15 +981,16 @@ const RateModal = ({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView
-          contentContainerStyle={styles.modalOverlay}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.modalContent}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             <TouchableOpacity style={styles.modalClose} onPress={onClose}>
               <X size={20} color="#888" />
             </TouchableOpacity>
-
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 20 }}
+            >
             <View style={styles.rateModalHeader}>
               <View style={styles.rateModalIconWrap}>
                 {model.iconUrl ? (
@@ -1096,19 +1097,19 @@ const RateModal = ({
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={isSubmitting}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
+            </ScrollView>
+            {/* Transaction Stepper Overlay */}
+            {submitStep !== 'idle' && (
+              <TransactionStepper
+                step={submitStep}
+                error={submitError}
+                txHash={submitTxHash}
+                onClose={submitStep === 'success' ? onClose : onResetSubmit}
+                onRetry={onResetSubmit}
+              />
+            )}
           </View>
-
-          {/* Transaction Stepper Overlay */}
-          {submitStep !== 'idle' && (
-            <TransactionStepper
-              step={submitStep}
-              error={submitError}
-              txHash={submitTxHash}
-              onClose={submitStep === 'success' ? onClose : onResetSubmit}
-              onRetry={onResetSubmit}
-            />
-          )}
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -1125,15 +1126,24 @@ export default function ReputationPage() {
     connectionError,
     migratedChats,
     clearMigratedChats,
-    logout
+    logout,
+    appKitReady
   } = useAuth();
   const { currentBalance } = useBilling();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
+  const isMobile = width < 500;
 
-  // Wagmi hooks for wallet interaction
+  // Wagmi hooks for wallet interaction (uses AppKit on native via our shim)
   const { address, isConnected, chainId } = useAccount();
+
+  // Debug: Log wallet state on Android
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      console.log('[Reputation] Wallet state:', { appKitReady, address: address?.slice(0, 10), isConnected });
+    }
+  }, [appKitReady, address, isConnected]);
   const { data: walletClient } = useWalletClient();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
@@ -1492,44 +1502,48 @@ export default function ReputationPage() {
       >
         <View style={[styles.header, isDesktop && styles.headerDesktop]}>
           <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.push('/home')} style={styles.backBtn}>
-              <ArrowLeft size={20} color="#fff" />
+            <TouchableOpacity onPress={() => router.push('/home')} style={[styles.backBtn, isMobile && { padding: 6 }]}>
+              <ArrowLeft size={isMobile ? 18 : 20} color="#fff" />
             </TouchableOpacity>
             <View>
               <View style={styles.headerTitleRow}>
-                <Trophy size={22} color="#FFD700" />
-                <Text style={styles.headerTitle}>AI Reputation</Text>
+                <Trophy size={isMobile ? 18 : 22} color="#FFD700" />
+                <Text style={[styles.headerTitle, isMobile && { fontSize: 16 }]}>
+                  {isMobile ? 'Reputation' : 'AI Reputation'}
+                </Text>
               </View>
-              <TouchableOpacity
-                style={styles.onChainHeaderBadge}
-                onPress={() => {
-                  if (Platform.OS === 'web') {
-                    window.open(SNOWTRACE_URL, '_blank');
-                  }
-                }}
-              >
-                <Link2 size={10} color="#00FF41" />
-                <Text style={styles.onChainHeaderText}>ON-CHAIN</Text>
-                <ExternalLink size={8} color="#00FF41" />
-              </TouchableOpacity>
+              {!isMobile && (
+                <TouchableOpacity
+                  style={styles.onChainHeaderBadge}
+                  onPress={() => {
+                    if (Platform.OS === 'web') {
+                      window.open(SNOWTRACE_URL, '_blank');
+                    }
+                  }}
+                >
+                  <Link2 size={10} color="#00FF41" />
+                  <Text style={styles.onChainHeaderText}>ON-CHAIN</Text>
+                  <ExternalLink size={8} color="#00FF41" />
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
-          <View style={styles.headerRight}>
+          <View style={[styles.headerRight, isMobile && { gap: 4 }]}>
             <TouchableOpacity
               onPress={() => setShowHowItWorks(true)}
-              style={styles.helpBtn}
+              style={[styles.helpBtn, isMobile && { padding: 6 }]}
             >
-              <Info size={18} color="#00FF41" />
+              <Info size={isMobile ? 16 : 18} color="#00FF41" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/home')} style={styles.headerNavBtn}>
-              <Home size={18} color="#888" />
+            <TouchableOpacity onPress={() => router.push('/home')} style={[styles.headerNavBtn, isMobile && { padding: 6 }]}>
+              <Home size={isMobile ? 16 : 18} color="#888" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/chat/new')} style={styles.headerNavBtn}>
-              <MessageSquare size={18} color="#888" />
+            <TouchableOpacity onPress={() => router.push('/chat/new')} style={[styles.headerNavBtn, isMobile && { padding: 6 }]}>
+              <MessageSquare size={isMobile ? 16 : 18} color="#888" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/x402')} style={styles.headerNavBtn}>
-              <DollarSign size={18} color="#888" />
+            <TouchableOpacity onPress={() => router.push('/x402')} style={[styles.headerNavBtn, isMobile && { padding: 6 }]}>
+              <DollarSign size={isMobile ? 16 : 18} color="#888" />
             </TouchableOpacity>
           </View>
         </View>
