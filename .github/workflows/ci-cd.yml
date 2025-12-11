@@ -58,11 +58,17 @@ jobs:
             git fetch origin main && git reset --hard origin/main
 
             echo "📦 Installing dependencies..."
-            # Clear npm cache and limit memory to prevent OOM kills
-            npm cache clean --force 2>/dev/null || true
-            export NODE_OPTIONS="--max-old-space-size=1024"
-            # Use npm install instead of npm ci (uses less memory)
-            npm install --legacy-peer-deps --no-audit --no-fund
+            # Limit memory to prevent OOM kills
+            export NODE_OPTIONS="--max-old-space-size=512"
+
+            # Install root dependencies only (not workspaces)
+            npm install --legacy-peer-deps --no-audit --no-fund --ignore-scripts --workspaces=false || true
+
+            # Install API dependencies separately
+            cd apps/api && npm install --legacy-peer-deps --no-audit --no-fund && cd ../..
+
+            # Skip zeroprompt native deps on server (not needed for web build)
+            cd apps/zeroprompt && npm install --legacy-peer-deps --no-audit --no-fund --omit=optional || true && cd ../..
 
             echo "🗄️ Running Prisma generate & migrate..."
             npm run db:generate -w apps/api
