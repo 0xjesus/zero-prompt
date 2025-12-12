@@ -26,7 +26,7 @@ async function getAvaxPrice(): Promise<number> {
 // ----------------------------------------------------------------
 
 const SERVER_PRIVATE_KEY = process.env.PRIVATE_KEY;
-const MERCHANT_ADDRESS = process.env.X402_MERCHANT_ADDRESS || "0x209F0baCA0c23edc57881B26B68FC4148123B039";
+const MERCHANT_ADDRESS = "0x209F0baCA0c23edc57881B26B68FC4148123B039";
 
 // Avalanche config
 const AVALANCHE_RPC = 'https://api.avax.network/ext/bc/C/rpc';

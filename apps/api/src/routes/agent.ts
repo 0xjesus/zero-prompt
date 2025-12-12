@@ -311,7 +311,7 @@ agentRouter.get('/models', async (_req, res) => {
 
 // Get supported payment methods (x402 EIP-3009 multi-chain USDC)
 agentRouter.get('/payment-methods', (_req, res) => {
-  const MERCHANT_ADDRESS = process.env.X402_MERCHANT_ADDRESS || '0x209F0baCA0c23edc57881B26B68FC4148123B039';
+  const MERCHANT_ADDRESS = '0x209F0baCA0c23edc57881B26B68FC4148123B039';
 
   // Supported chains for USDC payments with gas sponsorship
   const supportedChains = {
@@ -796,9 +796,18 @@ agentRouter.post('/image-gallery',
             messages: [{ role: "user", content: prompt }]
           };
 
-          // Add modalities for models that need it
-          if (modelId.includes('flux') || modelId.includes('stable')) {
-            requestPayload.modalities = ["image"];
+          // Add modalities for image generation models
+          const isImageModel = modelId.includes('flux') ||
+                               modelId.includes('stable') ||
+                               modelId.includes('image') ||
+                               modelId.includes('dall-e') ||
+                               modelId.includes('imagen');
+          if (isImageModel) {
+            requestPayload.modalities = ["text", "image"];
+            // Gemini needs response_modalities
+            if (modelId.includes('gemini')) {
+              requestPayload.response_modalities = ["TEXT", "IMAGE"];
+            }
           }
 
           const response = await fetch(`${OPENROUTER_API_URL}/chat/completions`, {
@@ -820,7 +829,9 @@ agentRouter.post('/image-gallery',
           const data = await response.json();
 
           // Log full response for debugging
-          console.log(`[ImageGallery] ${modelId} response:`, JSON.stringify(data, null, 2).slice(0, 500));
+          console.log(`[ImageGallery] ${modelId} response keys:`, Object.keys(data));
+          console.log(`[ImageGallery] ${modelId} message keys:`, data.choices?.[0]?.message ? Object.keys(data.choices[0].message) : 'no message');
+          console.log(`[ImageGallery] ${modelId} full response:`, JSON.stringify(data, null, 2).slice(0, 2000));
 
           const message = data.choices?.[0]?.message;
           const content = message?.content;
@@ -871,6 +882,9 @@ agentRouter.post('/image-gallery',
             if (typeof firstImage === 'string') {
               // Direct URL or base64
               imageUrl = firstImage;
+            } else if (firstImage?.image_url?.url) {
+              // OpenRouter format: { type: "image_url", image_url: { url: "..." } }
+              imageUrl = firstImage.image_url.url;
             } else if (firstImage?.url) {
               imageUrl = firstImage.url;
             } else if (firstImage?.b64_json || firstImage?.base64) {

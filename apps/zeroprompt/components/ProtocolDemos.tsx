@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
-  StyleSheet, ActivityIndicator, Image, Platform, useWindowDimensions
+  StyleSheet, ActivityIndicator, Image, Platform, useWindowDimensions, Modal
 } from 'react-native';
 import { useSignTypedData, useSendTransaction } from 'wagmi';
 import { getAddress, parseEther } from 'viem';
 import Markdown from 'react-native-markdown-display';
 import {
   Swords, Brain, ImageIcon, CheckCircle, XCircle,
-  Users, Trophy, AlertCircle, Plus, Copy, Terminal, ChevronDown, ChevronUp, Download, Share2, FileText
+  Users, Trophy, AlertCircle, Plus, Copy, Terminal, ChevronDown, ChevronUp, Download, Share2, FileText, Maximize2, X
 } from 'lucide-react-native';
+import { downloadImage } from './ImageGalleryModal';
 import { API_URL } from '../config/api';
 import { MERCHANT_ADDRESS as RAW_MERCHANT_ADDRESS } from '../lib/constants';
 import ModelSelectorModal from './ModelSelectorModal';
@@ -1339,6 +1340,16 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
   const [quote, setQuote] = useState<any>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
 
+  // Fullscreen image viewer
+  const [fullscreenImage, setFullscreenImage] = useState<{ url: string; model: string } | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (url: string, modelName: string) => {
+    setDownloading(true);
+    await downloadImage(url, `zeroprompt-${modelName}-${Date.now()}.png`);
+    setDownloading(false);
+  };
+
   // Fetch quote when models or prompt change - always update price dynamically
   useEffect(() => {
     const fetchQuote = async () => {
@@ -1654,27 +1665,80 @@ const ImageGallery = ({ isConnected, address, openWalletModal, models, theme }: 
 
           <Text style={styles.comparisonLabel}>MULTI-MODEL COMPARISON</Text>
           <View style={[styles.imageGridResults, isDesktop && styles.imageGridDesktop]}>
-            {results.images?.map((img: any, index: number) => (
-              <View key={index} style={[styles.imageCard, isDesktop && styles.imageCardDesktop, { borderColor: index === 0 ? '#EC4899' : index === 1 ? '#8B5CF6' : index === 2 ? '#F59E0B' : '#10B981' }]}>
-                <View style={[styles.imageModelHeader, { backgroundColor: index === 0 ? '#EC489920' : index === 1 ? '#8B5CF620' : index === 2 ? '#F59E0B20' : '#10B98120' }]}>
-                  <Text style={[styles.imageModelName, { color: index === 0 ? '#EC4899' : index === 1 ? '#8B5CF6' : index === 2 ? '#F59E0B' : '#10B981' }]}>{img.modelName}</Text>
-                  {img.latency > 0 && <Text style={styles.imageLatency}>{img.latency}ms</Text>}
-                </View>
-                {img.imageUrl ? (
-                  <Image
-                    source={{ uri: img.imageUrl }}
-                    style={styles.generatedImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.imagePlaceholder}>
-                    <XCircle size={24} color="#EF4444" />
-                    <Text style={styles.imageError}>{img.error || 'Failed'}</Text>
+            {results.images?.map((img: any, index: number) => {
+              const modelColor = index === 0 ? '#EC4899' : index === 1 ? '#8B5CF6' : index === 2 ? '#F59E0B' : '#10B981';
+              return (
+                <View key={index} style={[styles.imageCard, isDesktop && styles.imageCardDesktop, { borderColor: modelColor }]}>
+                  <View style={[styles.imageModelHeader, { backgroundColor: `${modelColor}20` }]}>
+                    <Text style={[styles.imageModelName, { color: modelColor }]}>{img.modelName}</Text>
+                    {img.latency > 0 && <Text style={styles.imageLatency}>{img.latency}ms</Text>}
                   </View>
-                )}
-              </View>
-            ))}
+                  {img.imageUrl ? (
+                    <View>
+                      <Image
+                        source={{ uri: img.imageUrl }}
+                        style={styles.generatedImage}
+                        resizeMode="cover"
+                      />
+                      {/* Action buttons */}
+                      <View style={styles.imageActions}>
+                        <TouchableOpacity
+                          style={styles.imageActionBtn}
+                          onPress={() => setFullscreenImage({ url: img.imageUrl, model: img.modelName })}
+                        >
+                          <Maximize2 size={18} color="#fff" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.imageActionBtn, styles.imageActionDownload]}
+                          onPress={() => handleDownload(img.imageUrl, img.modelName)}
+                        >
+                          <Download size={18} color="#000" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <XCircle size={24} color="#EF4444" />
+                      <Text style={styles.imageError}>{img.error || 'Failed'}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </View>
+
+          {/* Fullscreen Image Modal */}
+          <Modal visible={!!fullscreenImage} animationType="fade" transparent>
+            <View style={styles.fullscreenOverlay}>
+              <View style={styles.fullscreenHeader}>
+                <Text style={styles.fullscreenTitle}>{fullscreenImage?.model}</Text>
+                <View style={styles.fullscreenActions}>
+                  <TouchableOpacity
+                    style={styles.fullscreenBtn}
+                    onPress={() => fullscreenImage && handleDownload(fullscreenImage.url, fullscreenImage.model)}
+                    disabled={downloading}
+                  >
+                    {downloading ? (
+                      <ActivityIndicator size="small" color="#00FF41" />
+                    ) : (
+                      <Download size={20} color="#00FF41" />
+                    )}
+                    <Text style={styles.fullscreenBtnText}>Download</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.fullscreenCloseBtn} onPress={() => setFullscreenImage(null)}>
+                    <X size={24} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              {fullscreenImage && (
+                <Image
+                  source={{ uri: fullscreenImage.url }}
+                  style={styles.fullscreenImage}
+                  resizeMode="contain"
+                />
+              )}
+            </View>
+          </Modal>
 
           {/* CURL Command */}
           <CurlCommand
@@ -2256,5 +2320,85 @@ const styles = StyleSheet.create({
   quoteLoadingText: {
     color: '#888',
     fontSize: 12,
+  },
+  // Image action buttons
+  imageActions: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  imageActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  imageActionDownload: {
+    backgroundColor: '#00FF41',
+    borderColor: '#00FF41',
+  },
+  // Fullscreen modal
+  fullscreenOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 10,
+  },
+  fullscreenTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fullscreenActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  fullscreenBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0,255,65,0.15)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,255,65,0.3)',
+  },
+  fullscreenBtnText: {
+    color: '#00FF41',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fullscreenCloseBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '80%',
   },
 });
