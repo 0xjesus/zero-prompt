@@ -2,9 +2,13 @@
   "expo": {
     "name": "ZeroPrompt",
     "slug": "zeroprompt",
-    "version": "0.5.1",
+    "version": "0.6.1",
     "scheme": "zeroprompt",
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "orientation": "portrait",
     "icon": "./assets/logos/zero-prompt-logo.png",
     "splash": {
@@ -35,8 +39,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "replace-with-your-project-id"
+        "projectId": "1cf0fb7c-1124-4664-aa3d-1d0c5f8338f1"
       }
-    }
+    },
+    "owner": "0xjesus"
   }
 }
