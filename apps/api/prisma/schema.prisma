@@ -201,3 +201,43 @@ model ModelReputationCache {
 
   @@map("model_reputation_cache")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Decentralized Ollama Subnet
+// ═══════════════════════════════════════════════════════════════════════════
+
+model OllamaRequestLog {
+  id               Int      @id @default(autoincrement())
+  operatorTokenId  Int      @default(0) @map("operator_token_id")
+  operatorAddress  String?  @map("operator_address")
+  model            String
+  inputTokens      Int      @default(0) @map("input_tokens")
+  outputTokens     Int      @default(0) @map("output_tokens")
+  latencyMs        Int      @default(0) @map("latency_ms")
+  success          Boolean  @default(true)
+  synced           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  @@index([operatorTokenId])
+  @@index([operatorAddress])
+  @@index([synced])
+  @@index([createdAt])
+  @@map("ollama_request_logs")
+}
+
+model OperatorCache {
+  id               Int      @id @default(autoincrement())
+  tokenId          Int      @default(0) @map("token_id")
+  operatorAddress  String?  @unique @map("operator_address")
+  endpoint         String
+  supportedModels  Json     @map("supported_models")
+  stakeAmount      String   @map("stake_amount")
+  performanceScore Int      @default(50) @map("performance_score")
+  isActive         Boolean  @default(true) @map("is_active")
+  lastSyncedAt     DateTime @default(now()) @map("last_synced_at")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("operator_cache")
+}

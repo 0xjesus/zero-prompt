@@ -114,6 +114,22 @@ const config: HardhatUserConfig = {
       url: process.env.BSC_RPC_URL || "https://bsc-dataseed.binance.org",
       chainId: 56,
       accounts: [PRIVATE_KEY]
+    },
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ZEROPROMPT SUBNET
+    // ═══════════════════════════════════════════════════════════════════════
+    zeropromptSubnet: {
+      url: process.env.ZEROPROMPT_SUBNET_RPC_URL || "https://subnet.qcdr.io/ext/bc/3CbiMLH1ePtEgrYt96U6St1WYLq2WurzXAuBbgHjq15mcgLKp/rpc",
+      chainId: 432001,
+      accounts: [PRIVATE_KEY],
+      gasPrice: 25000000000
+    },
+    zeropromptSubnetTestnet: {
+      url: process.env.ZEROPROMPT_SUBNET_TESTNET_RPC_URL || "https://testnet.zeroprompt.app/ext/bc/zeroprompt/rpc",
+      chainId: 432001,
+      accounts: [PRIVATE_KEY],
+      gasPrice: 25000000000
     }
   },
 

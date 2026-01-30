@@ -31,7 +31,7 @@ import {
   Settings, X, Plus, Cpu, ChevronRight, ChevronDown, ChevronUp,
   MessageSquare, Copy, RefreshCw, Lock, Check, Maximize2, Minimize2,
   Image as ImageIcon, FileText, Box, Search, Globe, Brain, Mic, Layers, Grid, Layout,
-  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code, Star, Home, Download
+  Eye, Sparkles, PenTool, Trash2, CreditCard, DollarSign, ExternalLink, Code, Star, Home, Download, Server
 } from 'lucide-react-native';
 
 // ZeroPrompt Logo
@@ -45,8 +45,10 @@ import { WalletConnectModal, WalletSidebarSection, MigrationBanner } from "../..
 import ModelSelectorModal from "../../components/ModelSelectorModal";
 import ImageGalleryModal from "../../components/ImageGalleryModal";
 import { VAULT_ADDRESS } from "../../lib/constants";
-import { API_URL } from "../../config/api";
+import { API_URL, SUBNET_API_URL } from "../../config/api";
 import { fetchStream } from "../../lib/stream-polyfill";
+import { useMode } from "../../context/ModeContext";
+import NodeFeedback from "../../components/NodeFeedback";
 
 
 type Model = {
@@ -78,7 +80,7 @@ type ChatMessage = {
   attachmentUrl?: string;
   attachmentType?: string;
   webSearchType?: 'native' | 'exa' | null;
-  billing?: { costUSD: string; inputTokens?: number; outputTokens?: number };
+  billing?: { costUSD: string; inputTokens?: number; outputTokens?: number; nodeAddress?: string; mode?: string };
   generatedImages?: string[];
   responses?: {
       modelId: string;
@@ -89,7 +91,7 @@ type ChatMessage = {
       attachmentUrl?: string;
       attachmentType?: string;
       webSearchType?: 'native' | 'exa' | null;
-      billing?: { costUSD: string; inputTokens?: number; outputTokens?: number };
+      billing?: { costUSD: string; inputTokens?: number; outputTokens?: number; nodeAddress?: string; mode?: string };
       generatedImages?: string[];
       status: 'pending' | 'streaming' | 'done' | 'error';
       error?: string;
@@ -810,6 +812,13 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
                 <ImageIcon color="#E91E63" size={18} />
                 <Text style={{ color: '#E91E63', fontSize: 9, fontWeight: '600', fontFamily: FONT_MONO, marginTop: 4 }}>IMGS</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 10, backgroundColor: 'rgba(156, 163, 175, 0.1)', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(156, 163, 175, 0.3)' }}
+                onPress={() => { router.push('/settings'); onClose(); }}
+              >
+                <Settings color="#9CA3AF" size={18} />
+                <Text style={{ color: '#9CA3AF', fontSize: 9, fontWeight: '600', fontFamily: FONT_MONO, marginTop: 4 }}>SETTINGS</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={{ gap: 4, marginBottom: 8 }}>
@@ -851,6 +860,16 @@ const Sidebar = ({ isOpen, onClose, isDesktop, theme, user, connectWallet, start
                 <ImageIcon color="#E91E63" size={14} />
                 <Text style={{ color: '#E91E63', fontSize: 10, fontWeight: '600', fontFamily: FONT_MONO, flex: 1 }}>IMG_GALLERY</Text>
                 <ChevronRight color="#E91E63" size={12} />
+              </TouchableOpacity>
+
+              {/* Settings Link */}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(156, 163, 175, 0.1)', borderWidth: 1, borderColor: 'rgba(156, 163, 175, 0.3)', borderRadius: 6 }}
+                onPress={() => { router.push('/settings'); if(!isDesktop) onClose(); }}
+              >
+                <Settings color="#9CA3AF" size={14} />
+                <Text style={{ color: '#9CA3AF', fontSize: 10, fontWeight: '600', fontFamily: FONT_MONO, flex: 1 }}>SETTINGS</Text>
+                <ChevronRight color="#9CA3AF" size={12} />
               </TouchableOpacity>
             </View>
           )}
@@ -2759,6 +2778,10 @@ const ChatBubble = ({ item, theme, isSidebarOpen, allMessages }: any) => {
                     webSearchType={item.webSearchType}
                     generatedImages={item.generatedImages}
                 />
+                {/* Node Feedback for decentralized responses */}
+                {item.billing?.nodeAddress != null && item.billing?.mode === 'decentralized' && (
+                    <NodeFeedback operatorAddress={item.billing.nodeAddress} theme={theme} />
+                )}
             </View>
         </View>
     );
@@ -2781,6 +2804,7 @@ export default function ChatScreen() {
     openUpsaleModal, closeUpsaleModal, openDepositModal, closeDepositModal, executeDeposit,
     checkAndPromptCredits, refreshBilling
   } = useBilling();
+  const { isDecentralized, subnetApiUrl, selectedNodeAddress } = useMode();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const isDesktop = width > 1024;
@@ -3060,18 +3084,21 @@ export default function ChatScreen() {
     if (!input.trim() || streaming) return;
     if (selectedModels.length === 0) return;
 
-    // Estimate cost based on selected models (rough estimate: $0.001 per model per request)
-    const estimatedCost = selectedModels.length * 0.002; // Conservative estimate
+    // In decentralized mode, skip credit check (free)
+    if (!isDecentralized) {
+      // Estimate cost based on selected models (rough estimate: $0.001 per model per request)
+      const estimatedCost = selectedModels.length * 0.002; // Conservative estimate
 
-    // Check if user has enough credits
-    if (!checkAndPromptCredits(estimatedCost)) {
-      return; // Upsale modal will be shown
+      // Check if user has enough credits
+      if (!checkAndPromptCredits(estimatedCost)) {
+        return; // Upsale modal will be shown
+      }
     }
 
     let activeConvId = conversationId;
 
-    // Initialize conversation if new, to ensure all parallel requests share the ID
-    if (!activeConvId) {
+    // Initialize conversation if new (skip for decentralized - no server-side tracking)
+    if (!activeConvId && !isDecentralized) {
         try {
             const res = await fetch(`${API_URL}/llm/conversations`, {
                 method: 'POST',
@@ -3139,7 +3166,7 @@ export default function ChatScreen() {
       try {
           const isNative = Platform.OS === 'android' || Platform.OS === 'ios';
           
-          // Use streaming endpoint for ALL platforms now
+          // Always use local backend - it handles decentralized routing internally
           const endpoint = `${API_URL}/llm/chat/stream`;
 
           // Shared stream processor
@@ -3208,16 +3235,27 @@ export default function ChatScreen() {
               }
           };
 
+          // Build request body - add mode flag for decentralized routing
+          const requestBody = isDecentralized
+            ? JSON.stringify({
+                messages: payload,
+                model: model.openrouterId,
+                mode: 'decentralized',
+                ...(selectedNodeAddress != null ? { preferredNode: selectedNodeAddress } : {}),
+              })
+            : JSON.stringify({
+                messages: payload,
+                model: model.openrouterId,
+                conversationId: overrideConversationId || conversationId,
+                webSearch: webSearchEnabled,
+              });
+          const requestHeaders = getHeaders();
+
           if (isNative) {
               await fetchStream(endpoint, {
                   method: "POST",
-                  headers: getHeaders(),
-                  body: JSON.stringify({
-                      messages: payload,
-                      model: model.openrouterId,
-                      conversationId: overrideConversationId || conversationId,
-                      webSearch: webSearchEnabled
-                  })
+                  headers: requestHeaders,
+                  body: requestBody,
               }, (chunk) => {
                   processChunk(chunk);
               });
@@ -3225,13 +3263,8 @@ export default function ChatScreen() {
               // Web implementation
               const res = await fetch(endpoint, {
                   method: "POST",
-                  headers: getHeaders(),
-                  body: JSON.stringify({
-                      messages: payload,
-                      model: model.openrouterId,
-                      conversationId: overrideConversationId || conversationId,
-                      webSearch: webSearchEnabled
-                  })
+                  headers: requestHeaders,
+                  body: requestBody,
               });
               
               const reader = res.body?.getReader();
@@ -3398,6 +3431,12 @@ export default function ChatScreen() {
                 </TouchableOpacity>
              </View>
              <View style={{flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0}}>
+                <TouchableOpacity
+                    onPress={() => router.push('/settings')}
+                    style={{ padding: 8 }}
+                >
+                    <Settings size={20} color={theme.textSecondary || 'rgba(255,255,255,0.5)'} />
+                </TouchableOpacity>
                 <TouchableOpacity
                     onPress={startNewChat}
                     style={{
@@ -3736,6 +3775,41 @@ export default function ChatScreen() {
                             </Text>
                             <ChevronDown size={14} color="rgba(255,255,255,0.3)" />
                         </TouchableOpacity>
+
+                        {/* Decentralized mode badge */}
+                        {isDecentralized && (
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 3,
+                                backgroundColor: 'rgba(76, 175, 80, 0.15)',
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                borderRadius: 8,
+                            }}>
+                                <Cpu size={12} color="#4CAF50" />
+                                <Text style={{ color: '#4CAF50', fontSize: 10, fontWeight: '700' }}>FREE</Text>
+                            </View>
+                        )}
+
+                        {/* Pinned node indicator */}
+                        {isDecentralized && selectedNodeAddress !== null && (
+                            <TouchableOpacity
+                                onPress={() => router.push('/network')}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    backgroundColor: 'rgba(33, 150, 243, 0.2)',
+                                    paddingHorizontal: 8,
+                                    paddingVertical: 4,
+                                    borderRadius: 8,
+                                }}
+                            >
+                                <Server size={11} color="#2196F3" />
+                                <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{selectedNodeAddress?.slice(0, 6)}...{selectedNodeAddress?.slice(-4)}</Text>
+                            </TouchableOpacity>
+                        )}
 
                         {/* Spacer */}
                         <View style={{flex: 1}} />

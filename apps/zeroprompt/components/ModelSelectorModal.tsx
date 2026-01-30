@@ -13,10 +13,11 @@ import {
 } from 'react-native';
 import {
     X, Search, Brain, PenTool, Globe, Eye, Mic, Sparkles, Check,
-    ChevronDown, ChevronRight, Star, Clock, Layers, Tag, Award, ExternalLink
+    ChevronDown, ChevronRight, Star, Clock, Layers, Tag, Award, ExternalLink, Cpu
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { API_URL } from '../config/api';
+import { useMode } from '../context/ModeContext';
 
 // Reputation Tags - LLM Capability Categories (community-driven)
 const REPUTATION_TAGS = [
@@ -374,6 +375,7 @@ export default function ModelSelectorModal({
 }: ModelSelectorModalProps) {
     const router = useRouter();
     const { width, height } = useWindowDimensions();
+    const { mode, isDecentralized, availableOllamaModels, networkHealth } = useMode();
     const isDesktop = width > 768;
     const isMobile = width < 480;
     const [searchQuery, setSearchQuery] = useState('');
@@ -463,8 +465,27 @@ export default function ModelSelectorModal({
         });
     }, [onToggleModel]);
 
-    const { filteredModels, categories } = useMemo(() => {
+    const { filteredModels, categories, ollamaModelsList } = useMemo(() => {
+        // In decentralized mode, show Ollama models; in centralized, show OpenRouter models
         let filtered = models || [];
+
+        // For decentralized mode, create model objects from available Ollama models
+        const ollamaModels: Model[] = isDecentralized ? availableOllamaModels.map((m, idx) => ({
+            id: 10000 + idx, // Use high IDs to avoid conflicts
+            openrouterId: `ollama/${m.id}`,
+            name: `${m.name} (${m.nodeCount} node${m.nodeCount !== 1 ? 's' : ''} | ${m.avgLatencyMs}ms)`,
+            contextLength: 8192, // Default for most Ollama models
+            publicPricingPrompt: 0, // Free!
+            publicPricingCompletion: 0,
+            architecture: {
+                modality: 'text',
+            },
+        })) : [];
+
+        // In decentralized mode, use Ollama models
+        if (isDecentralized) {
+            filtered = ollamaModels;
+        }
 
         // Filter by search query
         if (searchQuery) {
@@ -475,8 +496,8 @@ export default function ModelSelectorModal({
             );
         }
 
-        // Filter by reputation tag (community-driven categories)
-        if (selectedTag && tagModelIds.length > 0) {
+        // Filter by reputation tag (community-driven categories) - only for centralized mode
+        if (!isDecentralized && selectedTag && tagModelIds.length > 0) {
             filtered = filtered.filter(m => tagModelIds.includes(m.id));
         }
 
@@ -546,9 +567,10 @@ export default function ModelSelectorModal({
 
         return {
             filteredModels: filtered,
-            categories: { favModels, recentModelsList, imageModels, reasoningModels, visionModels, chatModels }
+            categories: { favModels, recentModelsList, imageModels, reasoningModels, visionModels, chatModels },
+            ollamaModelsList: ollamaModels
         };
-    }, [models, searchQuery, activeCategory, favorites, recentModels, selectedTag, tagModelIds]);
+    }, [models, searchQuery, activeCategory, favorites, recentModels, selectedTag, tagModelIds, isDecentralized, availableOllamaModels]);
 
     const categoryFilters: { id: Category; label: string; icon: any; color: string }[] = [
         { id: 'all', label: 'All', icon: Layers, color: theme.primary },
@@ -605,11 +627,17 @@ export default function ModelSelectorModal({
                     {/* Header */}
                     <View style={[styles.header, isMobile && { paddingTop: 8, paddingHorizontal: 16, paddingVertical: 12 }]}>
                         <View style={styles.headerLeft}>
-                            <Sparkles size={isMobile ? 18 : 20} color={theme.primary} />
-                            <Text style={[styles.headerTitle, isMobile && { fontSize: 16 }]}>Select Models</Text>
+                            {isDecentralized ? (
+                                <Cpu size={isMobile ? 18 : 20} color={theme.primary} />
+                            ) : (
+                                <Sparkles size={isMobile ? 18 : 20} color={theme.primary} />
+                            )}
+                            <Text style={[styles.headerTitle, isMobile && { fontSize: 16 }]}>
+                                {isDecentralized ? 'Ollama Models' : 'Select Models'}
+                            </Text>
                             <View style={[styles.countBadge, { backgroundColor: 'rgba(0, 255, 65, 0.15)' }]}>
                                 <Text style={[styles.countText, { color: theme.primary }]}>
-                                    {String(models.length)}
+                                    {String(isDecentralized ? availableOllamaModels.length : models.length)}
                                 </Text>
                             </View>
                         </View>
@@ -617,6 +645,38 @@ export default function ModelSelectorModal({
                             <X color="#fff" size={isMobile ? 16 : 18} />
                         </TouchableOpacity>
                     </View>
+
+                    {/* Decentralized Mode Banner */}
+                    {isDecentralized && (
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: 'rgba(0, 200, 100, 0.12)',
+                            paddingHorizontal: 16,
+                            paddingVertical: 10,
+                            gap: 10,
+                            borderBottomWidth: 1,
+                            borderBottomColor: 'rgba(255,255,255,0.06)'
+                        }}>
+                            <View style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: 4,
+                                backgroundColor: networkHealth && networkHealth.healthyNodes > 0 ? '#4CAF50' : '#FF5722'
+                            }} />
+                            <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, flex: 1 }}>
+                                Decentralized Mode - {networkHealth?.healthyNodes || 0} nodes online
+                            </Text>
+                            <View style={{
+                                backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                                paddingHorizontal: 8,
+                                paddingVertical: 3,
+                                borderRadius: 8
+                            }}>
+                                <Text style={{ color: '#4CAF50', fontSize: 10, fontWeight: '700' }}>FREE</Text>
+                            </View>
+                        </View>
+                    )}
 
                     {/* Search */}
                     <View style={[styles.searchContainer, isMobile && { paddingHorizontal: 12, paddingVertical: 8 }]}>
@@ -792,7 +852,38 @@ export default function ModelSelectorModal({
                                 <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>Loading models...</Text>
                             </View>
                         ) : null}
-                        {contentReady && categories.favModels.length > 0 && activeCategory === 'all' && (
+
+                        {/* Decentralized Mode - Show Ollama Models */}
+                        {contentReady && isDecentralized && (
+                            <>
+                                {ollamaModelsList.length > 0 ? (
+                                    <CategorySection
+                                        title="Ollama Models"
+                                        icon={Cpu}
+                                        color="#4CAF50"
+                                        models={filteredModels}
+                                        selectedModels={selectedModels}
+                                        onToggleModel={handleToggleModel}
+                                        theme={theme}
+                                        favorites={favorites}
+                                        onToggleFavorite={toggleFavorite}
+                                    />
+                                ) : (
+                                    <View style={styles.emptyState}>
+                                        <Cpu size={40} color="rgba(255,255,255,0.2)" />
+                                        <Text style={styles.emptyText}>
+                                            {'No Ollama models available\non the network'}
+                                        </Text>
+                                        <Text style={{ color: 'rgba(255,255,255,0.3)', marginTop: 8, fontSize: 12, textAlign: 'center' }}>
+                                            Check back later or switch to Centralized mode
+                                        </Text>
+                                    </View>
+                                )}
+                            </>
+                        )}
+
+                        {/* Centralized Mode - Show OpenRouter Models */}
+                        {contentReady && !isDecentralized && categories.favModels.length > 0 && activeCategory === 'all' && (
                             <CategorySection
                                 title="Favorites"
                                 icon={Star}
@@ -806,7 +897,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {contentReady && categories.recentModelsList.length > 0 && activeCategory === 'all' && searchQuery === '' && (
+                        {contentReady && !isDecentralized && categories.recentModelsList.length > 0 && activeCategory === 'all' && searchQuery === '' && (
                             <CategorySection
                                 title="Recently Used"
                                 icon={Clock}
@@ -821,7 +912,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {contentReady && (activeCategory === 'all' || activeCategory === 'image') && categories.imageModels.length > 0 && (
+                        {contentReady && !isDecentralized && (activeCategory === 'all' || activeCategory === 'image') && categories.imageModels.length > 0 && (
                             <CategorySection
                                 title="Image Generation"
                                 icon={PenTool}
@@ -836,7 +927,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {contentReady && (activeCategory === 'all' || activeCategory === 'reasoning') && categories.reasoningModels.length > 0 && (
+                        {contentReady && !isDecentralized && (activeCategory === 'all' || activeCategory === 'reasoning') && categories.reasoningModels.length > 0 && (
                             <CategorySection
                                 title="Thinking Models"
                                 icon={Brain}
@@ -851,7 +942,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {contentReady && (activeCategory === 'all' || activeCategory === 'vision') && categories.visionModels.length > 0 && (
+                        {contentReady && !isDecentralized && (activeCategory === 'all' || activeCategory === 'vision') && categories.visionModels.length > 0 && (
                             <CategorySection
                                 title="Vision Models"
                                 icon={Eye}
@@ -866,7 +957,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {contentReady && (activeCategory === 'all' || activeCategory === 'chat') && (
+                        {contentReady && !isDecentralized && (activeCategory === 'all' || activeCategory === 'chat') && (
                             <CategorySection
                                 title="Chat Models"
                                 icon={Sparkles}
@@ -880,7 +971,7 @@ export default function ModelSelectorModal({
                             />
                         )}
 
-                        {contentReady && filteredModels.length === 0 && (
+                        {contentReady && !isDecentralized && filteredModels.length === 0 && (
                             <View style={styles.emptyState}>
                                 <Search size={40} color="rgba(255,255,255,0.2)" />
                                 <Text style={styles.emptyText}>

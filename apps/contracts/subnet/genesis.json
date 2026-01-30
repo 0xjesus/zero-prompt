@@ -1,0 +1,65 @@
+{
+  "config": {
+    "chainId": 432001,
+    "homesteadBlock": 0,
+    "eip150Block": 0,
+    "eip155Block": 0,
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "istanbulBlock": 0,
+    "muirGlacierBlock": 0,
+    "subnetEVMTimestamp": 0,
+    "feeConfig": {
+      "gasLimit": 15000000,
+      "minBaseFee": 1000000000,
+      "targetGas": 15000000,
+      "baseFeeChangeDenominator": 36,
+      "minBlockGasCost": 0,
+      "maxBlockGasCost": 1000000,
+      "targetBlockRate": 2,
+      "blockGasCostStep": 200000
+    },
+    "allowFeeRecipients": true,
+    "contractDeployerAllowListConfig": {
+      "blockTimestamp": 0,
+      "adminAddresses": [
+        "0x8db97C7cEcE249c2b98bDC0226Cc4C2A57BF52FC"
+      ],
+      "enabledAddresses": []
+    }
+  },
+  "alloc": {
+    "0x8db97C7cEcE249c2b98bDC0226Cc4C2A57BF52FC": {
+      "comment": "DEPLOYER / TREASURY - 25M ZEROP (25% of supply) - Replace with real multisig for production",
+      "balance": "0x14ADF4B7320334B90000000"
+    },
+    "0x0000000000000000000000000000000000000002": {
+      "comment": "REWARDS_POOL - 40M ZEROP (40% of supply) - Update to SubnetRewards contract address post-deployment",
+      "balance": "0x21E19E0C9BAB2400000000"
+    },
+    "0x0000000000000000000000000000000000000003": {
+      "comment": "LIQUIDITY - 20M ZEROP (20% of supply) - Replace with dedicated liquidity wallet",
+      "balance": "0x10F0CF064DD59200000000"
+    },
+    "0x0000000000000000000000000000000000000004": {
+      "comment": "TEAM - 10M ZEROP (10% of supply) - 2+2 year vesting - Replace with team multisig",
+      "balance": "0x084595161401484A000000"
+    },
+    "0x0000000000000000000000000000000000000005": {
+      "comment": "COMMUNITY - 5M ZEROP (5% of supply) - Airdrops - Replace with community wallet",
+      "balance": "0x0422CA8B0A00A425000000"
+    }
+  },
+  "nonce": "0x0",
+  "timestamp": "0x0",
+  "extraData": "0x00",
+  "gasLimit": "0xe4e1c0",
+  "difficulty": "0x0",
+  "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "coinbase": "0x0000000000000000000000000000000000000000",
+  "number": "0x0",
+  "gasUsed": "0x0",
+  "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+}

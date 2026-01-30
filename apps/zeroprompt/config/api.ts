@@ -25,6 +25,7 @@ const getApiUrl = () => {
 };
 
 export const API_URL = getApiUrl();
+export const SUBNET_API_URL = 'https://subnet.qcdr.io';
 
 console.log('[API Config] Final API_URL:', API_URL);
 

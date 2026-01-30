@@ -1,0 +1,13 @@
+{
+  "network": "avalancheFuji",
+  "chainId": 43113,
+  "deployer": "0xA43e4Df85CBEF2D86669c90b581E5FA7e9B06Baa",
+  "deploymentTime": "2026-01-27T20:10:00.000Z",
+  "contracts": {
+    "zeropToken": "0xb5258F8Cf1C1fB666164a29C81C8708d14dB3E77",
+    "operatorNFT": "0x51e616aADe9FbB4cc4106642c93e77FFF51bfa61",
+    "operatorRegistry": "0x5a6e78B68A4b7F2AacB2F737E132EDBC1e8268Bf",
+    "subnetRewards": "0xDc802C12CAC97b8E8F8334aFD293cE3F08B40B18"
+  },
+  "treasury": "0xA43e4Df85CBEF2D86669c90b581E5FA7e9B06Baa"
+}

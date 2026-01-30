@@ -8,6 +8,8 @@ import { chatCompletion } from "../services/openrouter";
 import { billingService } from "../services/billing";
 import { getGuestCredits, recordGuestUsage } from "../services/guestCredits";
 import { v4 as uuidv4 } from "uuid";
+import { ollamaService, OllamaMessage } from "../services/ollama";
+import { subnetNodeService } from "../services/subnetNodes";
 
 export const llmRouter = Router();
 
@@ -576,9 +578,9 @@ llmRouter.post("/chat", async (req, res) => {
 
 llmRouter.post("/chat/stream", async (req, res) => {
   console.log("\n--- STREAM CHAT REQUEST ---");
-  const { messages, model, conversationId, webSearch } = req.body || {};
+  const { messages, model, conversationId, webSearch, mode } = req.body || {};
   console.log("1. Payload received. webSearch:", webSearch, "(Type:", typeof webSearch, ")");
-  console.log("2. Model:", model);
+  console.log("2. Model:", model, "Mode:", mode || "centralized");
 
   const user = (req as any).user;
   const guestId = req.headers["x-guest-id"] as string | null;
@@ -653,7 +655,131 @@ llmRouter.post("/chat/stream", async (req, res) => {
       }
   }
 
-  // 3. LLM & Auto-RAG
+  // ═══════════════════════════════════════════════════════════════════════
+  // DECENTRALIZED MODE - Route to Ollama nodes instead of OpenRouter
+  // ═══════════════════════════════════════════════════════════════════════
+  if (mode === 'decentralized') {
+    const ollamaModel = (model || "llama3.2").replace(/^ollama\//, '');
+    const preferredNode = req.body?.preferredNode;
+    console.log(`[Decentralized] Using Ollama model: ${ollamaModel}${preferredNode ? `, preferred node: ${preferredNode}` : ''}`);
+
+    // Check if model is available on the network
+    if (!ollamaService.isModelAvailable(ollamaModel)) {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: `Model ${ollamaModel} is not available on the decentralized network. Available models: ${ollamaService.getAvailableModels().join(', ')}` } }] })}\n\n`);
+      res.write(`data: [DONE]\n\n`);
+      return res.end();
+    }
+
+    // Select node: prefer user-pinned node if set, otherwise auto-select
+    let node: ReturnType<typeof ollamaService.selectNode> = null;
+    let preferredNodeWarning: string | null = null;
+
+    if (preferredNode) {
+      const preferred = ollamaService.getAllNodes().find(n => n.address === preferredNode);
+      if (preferred && preferred.isHealthy && preferred.supportedModels.includes(ollamaModel)) {
+        node = preferred;
+        console.log(`[Decentralized] Using preferred node: ${preferred.address}`);
+      } else {
+        preferredNodeWarning = "Preferred node unavailable, using automatic selection";
+        console.log(`[Decentralized] Preferred node ${preferredNode} unavailable, falling back to auto-select`);
+        node = ollamaService.selectNode(ollamaModel);
+      }
+    } else {
+      node = ollamaService.selectNode(ollamaModel);
+    }
+
+    if (!node) {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "No healthy nodes available for this model. Please try again later." } }] })}\n\n`);
+      res.write(`data: [DONE]\n\n`);
+      return res.end();
+    }
+
+    console.log(`[Decentralized] Selected node: ${node.address} (${node.endpoint})`);
+    res.write(`data: ${JSON.stringify({ decentralizedNode: { address: node.address, latencyMs: node.latencyMs }, ...(preferredNodeWarning ? { warning: preferredNodeWarning } : {}) })}\n\n`);
+
+    try {
+      const startTime = Date.now();
+      let fullResponse = "";
+      let evalCount = 0;
+
+      // Convert messages to Ollama format
+      const ollamaMessages: OllamaMessage[] = messages.map((m: any) => ({
+        role: m.role as "system" | "user" | "assistant",
+        content: m.content,
+      }));
+
+      // Stream response from Ollama
+      for await (const chunk of ollamaService.chatCompletion(node, ollamaMessages, ollamaModel)) {
+        if (chunk.error) {
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: `\n\nError: ${chunk.error}` } }] })}\n\n`);
+          break;
+        }
+
+        if (chunk.content) {
+          fullResponse += chunk.content;
+          // Forward in OpenRouter-compatible format
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk.content } }] })}\n\n`);
+        }
+
+        if (chunk.done && chunk.evalCount) {
+          evalCount = chunk.evalCount;
+        }
+      }
+
+      const latencyMs = Date.now() - startTime;
+
+      // Estimate tokens (Ollama doesn't always provide accurate counts)
+      const inputTokens = Math.ceil(lastUserMessage.length / 4);
+      const outputTokens = evalCount || Math.ceil(fullResponse.length / 4);
+
+      // Report request to subnet for rewards tracking
+      await subnetNodeService.reportRequestDetailed(
+        node.address,
+        ollamaModel,
+        inputTokens,
+        outputTokens,
+        latencyMs,
+        true // success
+      );
+
+      // Save interaction
+      await saveInteraction(user, finalConversationId, lastUserMessage, fullResponse, `ollama/${ollamaModel}`, undefined, {
+        mode: 'decentralized',
+        nodeAddress: node.address,
+        latencyMs,
+        billing: {
+          inputTokens,
+          outputTokens,
+          costUSD: '0', // FREE for decentralized mode
+          mode: 'decentralized',
+          requestId
+        }
+      });
+
+      // Send billing info (FREE)
+      res.write(`data: ${JSON.stringify({
+        billing: {
+          inputTokens,
+          outputTokens,
+          costUSD: '0',
+          mode: 'decentralized',
+          nodeAddress: node.address,
+          requestId
+        }
+      })}\n\n`);
+
+      res.write(`data: [DONE]\n\n`);
+      return res.end();
+
+    } catch (error) {
+      console.error("[Decentralized] Stream error:", error);
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: `\n\nDecentralized inference error: ${(error as Error).message}` } }] })}\n\n`);
+      res.write(`data: [DONE]\n\n`);
+      return res.end();
+    }
+  }
+
+  // 3. LLM & Auto-RAG (Centralized Mode - OpenRouter)
   const targetModel = model || "openai/gpt-3.5-turbo";
   const modelDetails = await prisma.model.findUnique({ where: { openrouterId: targetModel }, select: { architecture: true } });
   const architecture = modelDetails?.architecture as any;
