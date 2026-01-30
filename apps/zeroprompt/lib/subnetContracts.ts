@@ -202,7 +202,8 @@ export const SUBNET_REWARDS_ABI = [
 // --- Read-only provider ---
 
 export function getSubnetProvider() {
-  return new ethers.JsonRpcProvider(SUBNET_RPC);
+  const network = new ethers.Network('zeroprompt-subnet', SUBNET_CHAIN_ID);
+  return new ethers.JsonRpcProvider(SUBNET_RPC, network, { staticNetwork: network });
 }
 
 // --- Read-only contract instances ---

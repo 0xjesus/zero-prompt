@@ -14,12 +14,6 @@ import { useMode } from "../context/ModeContext";
 import { useAuth } from "../context/AuthContext";
 import { API_URL } from "../config/api";
 import {
-  ZEROP_TOKEN_ADDRESS,
-  OPERATOR_REGISTRY_ADDRESS,
-  SUBNET_REWARDS_ADDRESS,
-  SUBNET_CHAIN_ID,
-} from "../lib/subnetContracts";
-import {
   ArrowLeft,
   Cpu,
   Cloud,
@@ -37,7 +31,6 @@ import {
   CheckCircle,
   Link2,
   Search,
-  AlertTriangle,
 } from "lucide-react-native";
 
 interface ConnectedNodeData {
@@ -108,7 +101,7 @@ export default function SettingsScreen() {
             setCurrentEpoch(data.currentEpoch);
           }
         }
-      } catch (err) {
+      } catch {
         // silent
       }
     };
@@ -133,9 +126,6 @@ export default function SettingsScreen() {
     return () => clearInterval(interval);
   }, [isDecentralized]);
 
-  const truncateEndpoint = (ep: string) =>
-    ep.length > 30 ? ep.substring(0, 30) + "..." : ep;
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -148,19 +138,16 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* 1. Inference Mode Section */}
+        {/* ─── Inference Mode ─── */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Inference Mode</Text>
           <Text style={styles.sectionSubtitle}>
             Choose how your AI requests are processed
           </Text>
 
-          {/* Centralized Mode Card */}
+          {/* Centralized */}
           <TouchableOpacity
-            style={[
-              styles.modeCard,
-              mode === "centralized" && styles.modeCardActive
-            ]}
+            style={[styles.modeCard, mode === "centralized" && styles.modeCardActive]}
             onPress={() => setMode("centralized")}
           >
             <View style={styles.modeCardHeader}>
@@ -168,24 +155,17 @@ export default function SettingsScreen() {
                 <Cloud size={24} color={mode === "centralized" ? colors.primary : colors.textSecondary} />
               </View>
               <View style={styles.modeInfo}>
-                <Text style={[
-                  styles.modeTitle,
-                  mode === "centralized" && styles.modeTitleActive
-                ]}>
+                <Text style={[styles.modeTitle, mode === "centralized" && styles.modeTitleActive]}>
                   Centralized (OpenRouter)
                 </Text>
                 <Text style={styles.modeDescription}>
                   Access 330+ models via OpenRouter
                 </Text>
               </View>
-              <View style={[
-                styles.modeRadio,
-                mode === "centralized" && styles.modeRadioActive
-              ]}>
+              <View style={[styles.modeRadio, mode === "centralized" && styles.modeRadioActive]}>
                 {mode === "centralized" && <View style={styles.modeRadioInner} />}
               </View>
             </View>
-
             <View style={styles.modeFeatures}>
               <View style={styles.modeFeature}>
                 <Zap size={14} color={colors.success} />
@@ -202,12 +182,9 @@ export default function SettingsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Decentralized Mode Card */}
+          {/* Decentralized */}
           <TouchableOpacity
-            style={[
-              styles.modeCard,
-              mode === "decentralized" && styles.modeCardActive
-            ]}
+            style={[styles.modeCard, mode === "decentralized" && styles.modeCardActive]}
             onPress={() => setMode("decentralized")}
           >
             <View style={styles.modeCardHeader}>
@@ -215,24 +192,17 @@ export default function SettingsScreen() {
                 <Cpu size={24} color={mode === "decentralized" ? colors.primary : colors.textSecondary} />
               </View>
               <View style={styles.modeInfo}>
-                <Text style={[
-                  styles.modeTitle,
-                  mode === "decentralized" && styles.modeTitleActive
-                ]}>
+                <Text style={[styles.modeTitle, mode === "decentralized" && styles.modeTitleActive]}>
                   Decentralized (Ollama)
                 </Text>
                 <Text style={styles.modeDescription}>
                   Community-powered AI inference
                 </Text>
               </View>
-              <View style={[
-                styles.modeRadio,
-                mode === "decentralized" && styles.modeRadioActive
-              ]}>
+              <View style={[styles.modeRadio, mode === "decentralized" && styles.modeRadioActive]}>
                 {mode === "decentralized" && <View style={styles.modeRadioInner} />}
               </View>
             </View>
-
             <View style={styles.modeFeatures}>
               <View style={styles.modeFeature}>
                 <DollarSign size={14} color={colors.success} />
@@ -250,48 +220,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 2. Explore Network Link */}
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.linkCard}
-            onPress={() => router.push("/network")}
-          >
-            <View style={styles.linkCardContent}>
-              <Globe size={20} color={colors.primary} />
-              <View style={styles.linkCardInfo}>
-                <Text style={styles.linkCardTitle}>Explore Network</Text>
-                <Text style={styles.linkCardDescription}>
-                  Browse operators, models, and network economics
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* 3. Operator Dashboard Link */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Node Operators</Text>
-          <TouchableOpacity
-            style={styles.linkCard}
-            onPress={() => router.push("/operator")}
-          >
-            <View style={styles.linkCardContent}>
-              <Server size={20} color={colors.primary} />
-              <View style={styles.linkCardInfo}>
-                <Text style={styles.linkCardTitle}>Operator Dashboard</Text>
-                <Text style={styles.linkCardDescription}>
-                  {user?.walletAddress
-                    ? "Manage your Ollama nodes and claim rewards"
-                    : "Connect wallet to manage nodes and earn rewards"}
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* 4. Connected Node (if pinned) */}
+        {/* ─── Connected Node (if pinned) ─── */}
         {selectedNodeAddress != null && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Connected Node</Text>
@@ -309,27 +238,37 @@ export default function SettingsScreen() {
                       {connectedNode.address.slice(0, 6)}...{connectedNode.address.slice(-4)}
                     </Text>
                   </View>
-                  <View style={[
-                    styles.healthBadgeSmall,
-                    { backgroundColor: connectedNode.isHealthy ? colors.success + "20" : colors.error + "20" }
-                  ]}>
+                  <View
+                    style={[
+                      styles.healthBadgeSmall,
+                      {
+                        backgroundColor: connectedNode.isHealthy
+                          ? colors.success + "20"
+                          : colors.error + "20",
+                      },
+                    ]}
+                  >
                     {connectedNode.isHealthy ? (
                       <CheckCircle size={12} color={colors.success} />
                     ) : (
                       <XCircle size={12} color={colors.error} />
                     )}
-                    <Text style={{
-                      fontSize: 11,
-                      fontWeight: "600",
-                      color: connectedNode.isHealthy ? colors.success : colors.error
-                    }}>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: "600",
+                        color: connectedNode.isHealthy ? colors.success : colors.error,
+                      }}
+                    >
                       {connectedNode.isHealthy ? "Online" : "Offline"}
                     </Text>
                   </View>
                 </View>
 
                 <Text style={styles.connectedNodeEndpoint} numberOfLines={1}>
-                  {truncateEndpoint(connectedNode.endpoint)}
+                  {connectedNode.endpoint.length > 30
+                    ? connectedNode.endpoint.substring(0, 30) + "..."
+                    : connectedNode.endpoint}
                 </Text>
 
                 <View style={{ flexDirection: "row", gap: 16, marginBottom: 12 }}>
@@ -339,24 +278,35 @@ export default function SettingsScreen() {
                   </View>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                     <Activity size={12} color={colors.textSecondary} />
-                    <Text style={styles.connectedNodeMeta}>Score: {connectedNode.performanceScore}/100</Text>
+                    <Text style={styles.connectedNodeMeta}>
+                      Score: {connectedNode.performanceScore}/100
+                    </Text>
                   </View>
                 </View>
 
                 {/* Supported models */}
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
                   {connectedNode.supportedModels.slice(0, 4).map((m, i) => (
-                    <View key={i} style={{
-                      backgroundColor: colors.background,
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
-                      borderRadius: 6,
-                    }}>
+                    <View
+                      key={i}
+                      style={{
+                        backgroundColor: colors.background,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                      }}
+                    >
                       <Text style={{ fontSize: 11, color: colors.text }}>{m}</Text>
                     </View>
                   ))}
                   {connectedNode.supportedModels.length > 4 && (
-                    <Text style={{ fontSize: 11, color: colors.textSecondary, alignSelf: "center" }}>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        color: colors.textSecondary,
+                        alignSelf: "center",
+                      }}
+                    >
                       +{connectedNode.supportedModels.length - 4}
                     </Text>
                   )}
@@ -365,18 +315,28 @@ export default function SettingsScreen() {
                 {/* Actions */}
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <TouchableOpacity
-                    style={[styles.connectedNodeBtn, { backgroundColor: colors.error + "15", flex: 1 }]}
+                    style={[
+                      styles.connectedNodeBtn,
+                      { backgroundColor: colors.error + "15", flex: 1 },
+                    ]}
                     onPress={() => setSelectedNodeAddress(null)}
                   >
                     <XCircle size={14} color={colors.error} />
-                    <Text style={[styles.connectedNodeBtnText, { color: colors.error }]}>Disconnect</Text>
+                    <Text style={[styles.connectedNodeBtnText, { color: colors.error }]}>
+                      Disconnect
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.connectedNodeBtn, { backgroundColor: colors.primary + "15", flex: 1 }]}
+                    style={[
+                      styles.connectedNodeBtn,
+                      { backgroundColor: colors.primary + "15", flex: 1 },
+                    ]}
                     onPress={() => router.push("/network")}
                   >
                     <Globe size={14} color={colors.primary} />
-                    <Text style={[styles.connectedNodeBtnText, { color: colors.primary }]}>Change Node</Text>
+                    <Text style={[styles.connectedNodeBtnText, { color: colors.primary }]}>
+                      Change Node
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -388,7 +348,7 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        {/* 5. Network Status (only show when decentralized) */}
+        {/* ─── Network Status (decentralized only) ─── */}
         {isDecentralized && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -423,7 +383,7 @@ export default function SettingsScreen() {
                     <Text style={styles.networkStatValue}>
                       {availableOllamaModels.length}
                     </Text>
-                    <Text style={styles.networkStatLabel}>Available Models</Text>
+                    <Text style={styles.networkStatLabel}>Models</Text>
                   </View>
                   <View style={styles.networkStatDivider} />
                   <View style={styles.networkStat}>
@@ -434,12 +394,16 @@ export default function SettingsScreen() {
                   </View>
                 </View>
 
-                {/* Health indicator */}
                 <View style={styles.healthIndicator}>
-                  <View style={[
-                    styles.healthDot,
-                    { backgroundColor: networkHealth.healthyNodes > 0 ? colors.success : colors.error }
-                  ]} />
+                  <View
+                    style={[
+                      styles.healthDot,
+                      {
+                        backgroundColor:
+                          networkHealth.healthyNodes > 0 ? colors.success : colors.error,
+                      },
+                    ]}
+                  />
                   <Text style={styles.healthText}>
                     {networkHealth.healthyNodes > 0
                       ? `Network operational (${networkHealth.healthyNodes}/${networkHealth.totalNodes} nodes online)`
@@ -449,22 +413,27 @@ export default function SettingsScreen() {
 
                 {/* Epoch countdown */}
                 {(currentEpoch != null || epochCountdown) && (
-                  <View style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    paddingTop: 12,
-                    marginTop: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: colors.border,
-                  }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      paddingTop: 12,
+                      marginTop: 12,
+                      borderTopWidth: 1,
+                      borderTopColor: colors.border,
+                    }}
+                  >
                     {currentEpoch != null && (
-                      <Text style={styles.healthText}>
-                        Current Epoch: #{currentEpoch}
-                      </Text>
+                      <Text style={styles.healthText}>Epoch #{currentEpoch}</Text>
                     )}
                     {epochCountdown && (
-                      <Text style={[styles.healthText, { color: colors.primary, fontWeight: "600" }]}>
+                      <Text
+                        style={[
+                          styles.healthText,
+                          { color: colors.primary, fontWeight: "600" },
+                        ]}
+                      >
                         Resets in: {epochCountdown}
                       </Text>
                     )}
@@ -473,15 +442,13 @@ export default function SettingsScreen() {
               </View>
             ) : (
               <View style={styles.networkCard}>
-                <Text style={styles.emptyText}>
-                  Unable to fetch network status
-                </Text>
+                <Text style={styles.emptyText}>Unable to fetch network status</Text>
               </View>
             )}
           </View>
         )}
 
-        {/* Available Ollama Models (only show when decentralized) */}
+        {/* ─── Available Ollama Models (decentralized only) ─── */}
         {isDecentralized && availableOllamaModels.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Available Ollama Models</Text>
@@ -491,17 +458,26 @@ export default function SettingsScreen() {
                   <View style={styles.modelInfo}>
                     <Text style={styles.modelName}>{model.name}</Text>
                     <Text style={styles.modelMeta}>
-                      {model.nodeCount} node{model.nodeCount !== 1 ? "s" : ""} | {model.avgLatencyMs}ms avg
+                      {model.nodeCount} node{model.nodeCount !== 1 ? "s" : ""} |{" "}
+                      {model.avgLatencyMs}ms avg
                     </Text>
                   </View>
-                  <View style={[
-                    styles.modelStatus,
-                    { backgroundColor: model.available ? colors.success + "20" : colors.error + "20" }
-                  ]}>
-                    <Text style={[
-                      styles.modelStatusText,
-                      { color: model.available ? colors.success : colors.error }
-                    ]}>
+                  <View
+                    style={[
+                      styles.modelStatus,
+                      {
+                        backgroundColor: model.available
+                          ? colors.success + "20"
+                          : colors.error + "20",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.modelStatusText,
+                        { color: model.available ? colors.success : colors.error },
+                      ]}
+                    >
                       {model.available ? "Available" : "Offline"}
                     </Text>
                   </View>
@@ -511,85 +487,57 @@ export default function SettingsScreen() {
           </View>
         )}
 
-        {/* Subnet Block Explorer */}
+        {/* ─── Quick Links ─── */}
         <View style={styles.section}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <Text style={styles.sectionTitle}>Subnet Explorer</Text>
-            <View style={styles.testnetBadge}>
-              <AlertTriangle size={10} color="#FF9800" />
-              <Text style={styles.testnetBadgeText}>TESTNET</Text>
+          <Text style={styles.sectionTitle}>Tools</Text>
+
+          <TouchableOpacity style={styles.linkCard} onPress={() => router.push("/network")}>
+            <View style={styles.linkCardContent}>
+              <Globe size={20} color={colors.primary} />
+              <View style={styles.linkCardInfo}>
+                <Text style={styles.linkCardTitle}>Network</Text>
+                <Text style={styles.linkCardDescription}>
+                  Browse operators, models, and network stats
+                </Text>
+              </View>
             </View>
-          </View>
-          <Text style={styles.sectionSubtitle}>
-            Verify on-chain contracts on ZeroPrompt Subnet (Chain {SUBNET_CHAIN_ID})
-          </Text>
-
-          <View style={styles.explorerCard}>
-            {/* ZEROP Token */}
-            <TouchableOpacity
-              style={styles.explorerRow}
-              onPress={() => router.push("/explorer")}
-            >
-              <View style={styles.explorerRowLeft}>
-                <View style={[styles.explorerDot, { backgroundColor: colors.primary }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.explorerLabel}>ZEROP Token (ERC-20)</Text>
-                  <Text style={styles.explorerAddress} numberOfLines={1}>
-                    {ZEROP_TOKEN_ADDRESS.slice(0, 6)}...{ZEROP_TOKEN_ADDRESS.slice(-4)}
-                  </Text>
-                </View>
-              </View>
-              <ChevronRight size={14} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            {/* Operator Registry */}
-            <TouchableOpacity
-              style={styles.explorerRow}
-              onPress={() => router.push("/explorer")}
-            >
-              <View style={styles.explorerRowLeft}>
-                <View style={[styles.explorerDot, { backgroundColor: "#2196F3" }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.explorerLabel}>Operator Registry (Staking)</Text>
-                  <Text style={styles.explorerAddress} numberOfLines={1}>
-                    {OPERATOR_REGISTRY_ADDRESS.slice(0, 6)}...{OPERATOR_REGISTRY_ADDRESS.slice(-4)}
-                  </Text>
-                </View>
-              </View>
-              <ChevronRight size={14} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            {/* Subnet Rewards */}
-            <TouchableOpacity
-              style={[styles.explorerRow, { borderBottomWidth: 0 }]}
-              onPress={() => router.push("/explorer")}
-            >
-              <View style={styles.explorerRowLeft}>
-                <View style={[styles.explorerDot, { backgroundColor: "#4CAF50" }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.explorerLabel}>Subnet Rewards (Epochs)</Text>
-                  <Text style={styles.explorerAddress} numberOfLines={1}>
-                    {SUBNET_REWARDS_ADDRESS.slice(0, 6)}...{SUBNET_REWARDS_ADDRESS.slice(-4)}
-                  </Text>
-                </View>
-              </View>
-              <ChevronRight size={14} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Built-in Explorer button */}
-          <TouchableOpacity
-            style={[styles.explorerButton, { backgroundColor: colors.primary + "20", borderColor: colors.primary + "50" }]}
-            onPress={() => router.push("/explorer")}
-          >
-            <Search size={16} color={colors.primary} />
-            <Text style={styles.explorerButtonText}>Open Subnet Explorer</Text>
-            <ChevronRight size={14} color={colors.primary} />
+            <ChevronRight size={20} color={colors.textSecondary} />
           </TouchableOpacity>
 
+          <View style={{ height: 10 }} />
+
+          <TouchableOpacity style={styles.linkCard} onPress={() => router.push("/operator")}>
+            <View style={styles.linkCardContent}>
+              <Server size={20} color={colors.primary} />
+              <View style={styles.linkCardInfo}>
+                <Text style={styles.linkCardTitle}>Operator Dashboard</Text>
+                <Text style={styles.linkCardDescription}>
+                  {user?.walletAddress
+                    ? "Manage nodes and claim rewards"
+                    : "Connect wallet to manage nodes"}
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+
+          <View style={{ height: 10 }} />
+
+          <TouchableOpacity style={styles.linkCard} onPress={() => router.push("/explorer")}>
+            <View style={styles.linkCardContent}>
+              <Search size={20} color={colors.primary} />
+              <View style={styles.linkCardInfo}>
+                <Text style={styles.linkCardTitle}>Block Explorer</Text>
+                <Text style={styles.linkCardDescription}>
+                  View blocks, transactions, and contracts on the subnet
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Info Card */}
+        {/* ─── Info ─── */}
         <View style={styles.section}>
           <View style={styles.infoCard}>
             <Info size={20} color={colors.primary} />
@@ -597,8 +545,8 @@ export default function SettingsScreen() {
               <Text style={styles.infoTitle}>About Decentralized Mode</Text>
               <Text style={styles.infoText}>
                 In decentralized mode, your requests are processed by community-operated
-                Ollama nodes. Operators stake ZEROP tokens and earn rewards for serving requests.
-                This mode is free for users!
+                Ollama nodes. Operators stake ZEROP tokens and earn rewards for serving
+                requests. This mode is free for users.
               </Text>
             </View>
           </View>
@@ -614,7 +562,7 @@ const createStyles = (colors: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background
+      backgroundColor: colors.background,
     },
     header: {
       flexDirection: "row",
@@ -624,42 +572,42 @@ const createStyles = (colors: any) =>
       paddingTop: Platform.OS === "web" ? 20 : 50,
       paddingBottom: 16,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border
+      borderBottomColor: colors.border,
     },
     backButton: {
-      padding: 8
+      padding: 8,
     },
     title: {
       fontSize: 20,
       fontWeight: "700",
-      color: colors.text
+      color: colors.text,
     },
     content: {
       flex: 1,
-      padding: 16
+      padding: 16,
     },
     section: {
-      marginBottom: 24
+      marginBottom: 24,
     },
     sectionHeader: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 12
+      marginBottom: 12,
     },
     sectionTitle: {
       fontSize: 18,
       fontWeight: "600",
       color: colors.text,
-      marginBottom: 4
+      marginBottom: 4,
     },
     sectionSubtitle: {
       fontSize: 14,
       color: colors.textSecondary,
-      marginBottom: 16
+      marginBottom: 16,
     },
     refreshButton: {
-      padding: 8
+      padding: 8,
     },
     modeCard: {
       backgroundColor: colors.surface,
@@ -667,16 +615,16 @@ const createStyles = (colors: any) =>
       padding: 16,
       marginBottom: 12,
       borderWidth: 2,
-      borderColor: colors.border
+      borderColor: colors.border,
     },
     modeCardActive: {
       borderColor: colors.primary,
-      backgroundColor: colors.primary + "10"
+      backgroundColor: colors.primary + "10",
     },
     modeCardHeader: {
       flexDirection: "row",
       alignItems: "center",
-      marginBottom: 12
+      marginBottom: 12,
     },
     modeIconContainer: {
       width: 48,
@@ -685,23 +633,23 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.background,
       alignItems: "center",
       justifyContent: "center",
-      marginRight: 12
+      marginRight: 12,
     },
     modeInfo: {
-      flex: 1
+      flex: 1,
     },
     modeTitle: {
       fontSize: 16,
       fontWeight: "600",
       color: colors.text,
-      marginBottom: 2
+      marginBottom: 2,
     },
     modeTitleActive: {
-      color: colors.primary
+      color: colors.primary,
     },
     modeDescription: {
       fontSize: 13,
-      color: colors.textSecondary
+      color: colors.textSecondary,
     },
     modeRadio: {
       width: 24,
@@ -710,21 +658,21 @@ const createStyles = (colors: any) =>
       borderWidth: 2,
       borderColor: colors.border,
       alignItems: "center",
-      justifyContent: "center"
+      justifyContent: "center",
     },
     modeRadioActive: {
-      borderColor: colors.primary
+      borderColor: colors.primary,
     },
     modeRadioInner: {
       width: 12,
       height: 12,
       borderRadius: 6,
-      backgroundColor: colors.primary
+      backgroundColor: colors.primary,
     },
     modeFeatures: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8
+      gap: 8,
     },
     modeFeature: {
       flexDirection: "row",
@@ -733,53 +681,53 @@ const createStyles = (colors: any) =>
       backgroundColor: colors.background,
       paddingHorizontal: 10,
       paddingVertical: 6,
-      borderRadius: 8
+      borderRadius: 8,
     },
     modeFeatureText: {
       fontSize: 12,
-      color: colors.textSecondary
+      color: colors.textSecondary,
     },
     loadingContainer: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       padding: 20,
-      gap: 12
+      gap: 12,
     },
     loadingText: {
       fontSize: 14,
-      color: colors.textSecondary
+      color: colors.textSecondary,
     },
     networkCard: {
       backgroundColor: colors.surface,
       borderRadius: 16,
       padding: 16,
       borderWidth: 1,
-      borderColor: colors.border
+      borderColor: colors.border,
     },
     networkStats: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-around",
-      marginBottom: 16
+      marginBottom: 16,
     },
     networkStat: {
-      alignItems: "center"
+      alignItems: "center",
     },
     networkStatValue: {
       fontSize: 24,
       fontWeight: "700",
-      color: colors.text
+      color: colors.text,
     },
     networkStatLabel: {
       fontSize: 12,
       color: colors.textSecondary,
-      marginTop: 4
+      marginTop: 4,
     },
     networkStatDivider: {
       width: 1,
       height: 40,
-      backgroundColor: colors.border
+      backgroundColor: colors.border,
     },
     healthIndicator: {
       flexDirection: "row",
@@ -787,29 +735,29 @@ const createStyles = (colors: any) =>
       gap: 8,
       paddingTop: 12,
       borderTopWidth: 1,
-      borderTopColor: colors.border
+      borderTopColor: colors.border,
     },
     healthDot: {
       width: 8,
       height: 8,
-      borderRadius: 4
+      borderRadius: 4,
     },
     healthText: {
       fontSize: 13,
-      color: colors.textSecondary
+      color: colors.textSecondary,
     },
     emptyText: {
       fontSize: 14,
       color: colors.textSecondary,
       textAlign: "center",
-      paddingVertical: 20
+      paddingVertical: 20,
     },
     modelsCard: {
       backgroundColor: colors.surface,
       borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
-      overflow: "hidden"
+      overflow: "hidden",
     },
     modelItem: {
       flexDirection: "row",
@@ -817,29 +765,29 @@ const createStyles = (colors: any) =>
       justifyContent: "space-between",
       padding: 14,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border
+      borderBottomColor: colors.border,
     },
     modelInfo: {
-      flex: 1
+      flex: 1,
     },
     modelName: {
       fontSize: 14,
       fontWeight: "600",
-      color: colors.text
+      color: colors.text,
     },
     modelMeta: {
       fontSize: 12,
       color: colors.textSecondary,
-      marginTop: 2
+      marginTop: 2,
     },
     modelStatus: {
       paddingHorizontal: 10,
       paddingVertical: 4,
-      borderRadius: 8
+      borderRadius: 8,
     },
     modelStatusText: {
       fontSize: 12,
-      fontWeight: "500"
+      fontWeight: "500",
     },
     linkCard: {
       flexDirection: "row",
@@ -849,49 +797,48 @@ const createStyles = (colors: any) =>
       borderRadius: 16,
       padding: 16,
       borderWidth: 1,
-      borderColor: colors.border
+      borderColor: colors.border,
     },
     linkCardContent: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      flex: 1
+      flex: 1,
     },
     linkCardInfo: {
-      flex: 1
+      flex: 1,
     },
     linkCardTitle: {
       fontSize: 16,
       fontWeight: "600",
-      color: colors.text
+      color: colors.text,
     },
     linkCardDescription: {
       fontSize: 13,
       color: colors.textSecondary,
-      marginTop: 2
+      marginTop: 2,
     },
     infoCard: {
       flexDirection: "row",
       backgroundColor: colors.primary + "15",
       borderRadius: 16,
       padding: 16,
-      gap: 12
+      gap: 12,
     },
     infoContent: {
-      flex: 1
+      flex: 1,
     },
     infoTitle: {
       fontSize: 14,
       fontWeight: "600",
       color: colors.text,
-      marginBottom: 4
+      marginBottom: 4,
     },
     infoText: {
       fontSize: 13,
       color: colors.textSecondary,
-      lineHeight: 18
+      lineHeight: 18,
     },
-    // Connected Node styles
     connectedNodeCard: {
       backgroundColor: colors.surface,
       borderRadius: 16,
@@ -939,78 +886,5 @@ const createStyles = (colors: any) =>
     connectedNodeBtnText: {
       fontSize: 13,
       fontWeight: "600",
-    },
-    // Subnet Explorer styles
-    testnetBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      backgroundColor: "#FF9800" + "20",
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: "#FF9800" + "40",
-    },
-    testnetBadgeText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: "#FF9800",
-      letterSpacing: 0.5,
-    },
-    explorerCard: {
-      backgroundColor: colors.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    },
-    explorerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    explorerRowLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      flex: 1,
-    },
-    explorerDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    explorerLabel: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    explorerAddress: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      fontFamily: Platform.OS === "web" ? "monospace" : undefined,
-      marginTop: 2,
-    },
-    explorerButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      backgroundColor: colors.primary + "12",
-      paddingVertical: 14,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.primary + "30",
-      marginTop: 12,
-    },
-    explorerButtonText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: colors.primary,
     },
   });
