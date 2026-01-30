@@ -4,10 +4,15 @@
  */
 
 import { ethers } from 'ethers';
+import { Platform } from 'react-native';
+import { API_URL } from '../config/api';
 
 // --- Chain ---
 export const SUBNET_CHAIN_ID = 432001;
 export const SUBNET_RPC = process.env.EXPO_PUBLIC_SUBNET_RPC || 'https://subnet.qcdr.io/ext/bc/3CbiMLH1ePtEgrYt96U6St1WYLq2WurzXAuBbgHjq15mcgLKp/rpc';
+
+/** On web, use the API proxy to avoid CORS issues (subnet returns duplicate Access-Control-Allow-Origin headers) */
+export const SUBNET_RPC_PROXIED = Platform.OS === 'web' ? `${API_URL}/subnet/rpc` : SUBNET_RPC;
 
 // --- Contract Addresses ---
 export const ZEROP_TOKEN_ADDRESS = '0x5aa01B3b5877255cE50cc55e8986a7a5fe29C70e';
@@ -203,7 +208,7 @@ export const SUBNET_REWARDS_ABI = [
 
 export function getSubnetProvider() {
   const network = new ethers.Network('zeroprompt-subnet', SUBNET_CHAIN_ID);
-  return new ethers.JsonRpcProvider(SUBNET_RPC, network, { staticNetwork: network });
+  return new ethers.JsonRpcProvider(SUBNET_RPC_PROXIED, network, { staticNetwork: network });
 }
 
 // --- Read-only contract instances ---

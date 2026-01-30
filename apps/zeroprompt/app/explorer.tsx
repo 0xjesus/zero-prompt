@@ -19,6 +19,7 @@ import {
   OPERATOR_REGISTRY_ABI,
   SUBNET_REWARDS_ABI,
 } from "../lib/subnetContracts";
+import { API_URL } from "../config/api";
 import {
   ArrowLeft,
   Activity,
@@ -132,9 +133,12 @@ const copyText = (text: string) => {
   }
 };
 
-/** Direct JSON-RPC call via fetch — bypasses ethers provider issues */
+/** RPC URL — use API proxy on web to avoid CORS (subnet returns duplicate headers) */
+const RPC_URL = Platform.OS === "web" ? `${API_URL}/subnet/rpc` : SUBNET_RPC;
+
+/** JSON-RPC call via fetch — routed through API proxy on web */
 async function rpcCall(method: string, params: any[] = []): Promise<any> {
-  const res = await fetch(SUBNET_RPC, {
+  const res = await fetch(RPC_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
@@ -162,10 +166,10 @@ export default function ExplorerScreen() {
 
   const getProvider = useCallback(() => {
     if (!providerRef.current) {
-      // Explicit static network — skips async chain ID detection that can hang
+      // Use proxy URL on web to avoid CORS; explicit static network to skip detection
       const network = new ethers.Network("zeroprompt-subnet", SUBNET_CHAIN_ID);
       providerRef.current = new ethers.JsonRpcProvider(
-        SUBNET_RPC,
+        RPC_URL,
         network,
         { staticNetwork: network }
       );

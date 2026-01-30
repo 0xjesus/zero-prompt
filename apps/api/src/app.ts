@@ -34,6 +34,23 @@ export function createApp() {
   app.use("/reputation", reputationRouter);
   app.use("/operators", operatorRouter);
 
+  // Subnet RPC proxy — works around duplicate CORS headers from the subnet node
+  app.post("/subnet/rpc", async (req, res) => {
+    const rpcUrl = process.env.SUBNET_RPC_URL;
+    if (!rpcUrl) return res.status(503).json({ error: "Subnet RPC not configured" });
+    try {
+      const upstream = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.json();
+      res.json(data);
+    } catch (e: any) {
+      res.status(502).json({ jsonrpc: "2.0", id: req.body?.id || 1, error: { code: -32000, message: e.message || "RPC proxy error" } });
+    }
+  });
+
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error("Unhandled error", err);
     res.status(500).json({ error: "internal_error" });
