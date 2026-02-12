@@ -58,6 +58,10 @@ if (Platform.OS === "web") {
           email: false,
           socials: false,
           emailShowWallets: true,
+          swaps: false,
+          onramp: false,
+          send: false,
+          receive: false,
         },
         enableCoinbase: false,
         coinbasePreference: "eoaOnly",
@@ -231,6 +235,10 @@ async function initializeNativeAppKit(): Promise<boolean> {
           analytics: true,
           email: false,
           socials: false,
+          swaps: false,
+          onramp: false,
+          send: false,
+          receive: false,
         },
       });
 
